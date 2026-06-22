@@ -1,0 +1,2 @@
+# Placeholder so the directory exists for go:embed in a fresh checkout.
+# The production build replaces this directory with the compiled SvelteKit app.

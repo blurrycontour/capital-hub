@@ -1,0 +1,63 @@
+services:
+  capital-hub:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: capital-hub:latest
+    container_name: capital-hub
+    restart: unless-stopped
+    environment:
+      CH_ENV: prod
+      CH_ADDR: ":8080"
+      # Externally reachable URL (used for OIDC redirects and email links).
+      CH_BASE_URL: ${CH_BASE_URL:-http://localhost:8080}
+      # REQUIRED in prod: a long random string signing session cookies.
+      CH_SESSION_SECRET: ${CH_SESSION_SECRET:?set CH_SESSION_SECRET in .env}
+      CH_SESSION_TTL_HOURS: ${CH_SESSION_TTL_HOURS:-720}
+      CH_DATA_DIR: /data
+      CH_LOG_LEVEL: ${CH_LOG_LEVEL:-info}
+      # Comma-separated trusted proxy CIDRs (enables X-Forwarded-* handling).
+      CH_TRUSTED_PROXIES: ${CH_TRUSTED_PROXIES:-}
+      CH_BOOTSTRAP_ADMIN_USERNAME: ${CH_BOOTSTRAP_ADMIN_USERNAME:-}
+      CH_BOOTSTRAP_ADMIN_EMAIL: ${CH_BOOTSTRAP_ADMIN_EMAIL:-}
+      CH_BOOTSTRAP_ADMIN_PASSWORD: ${CH_BOOTSTRAP_ADMIN_PASSWORD:-}
+      CH_OIDC_ENABLED: ${CH_OIDC_ENABLED:-false}
+      CH_OIDC_ISSUER_URL: ${CH_OIDC_ISSUER_URL:-}
+      CH_OIDC_CLIENT_ID: ${CH_OIDC_CLIENT_ID:-}
+      CH_OIDC_CLIENT_SECRET: ${CH_OIDC_CLIENT_SECRET:-}
+      CH_OIDC_REDIRECT_URL: ${CH_OIDC_REDIRECT_URL:-}
+      CH_OIDC_ADMIN_GROUP: ${CH_OIDC_ADMIN_GROUP:-}
+    volumes:
+      - ch-data:/data
+    # Exposed only to the reverse proxy network by default. Uncomment to test
+    # directly without Caddy.
+    # ports:
+    #   - "8080:8080"
+    networks:
+      - web
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: capital-hub-caddy
+    restart: unless-stopped
+    depends_on:
+      - capital-hub
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      CH_DOMAIN: ${CH_DOMAIN:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - web
+
+volumes:
+  ch-data:
+  caddy-data:
+  caddy-config:
+
+networks:
+  web:

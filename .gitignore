@@ -1,0 +1,33 @@
+# misc
+.github/prompts
+
+# --- Backend (Go) ---
+/backend/bin/
+/backend/.devdata/
+*.test
+*.out
+coverage.out
+
+# --- Runtime data ---
+/data/
+*.db
+*.db-shm
+*.db-wal
+
+# --- Frontend (Node / SvelteKit) ---
+/frontend/node_modules/
+/frontend/build/
+/frontend/.svelte-kit/
+/frontend/.vite/
+/frontend/vite.config.ts.timestamp-*
+
+# --- Embedded frontend build (generated; keep only the placeholder) ---
+/backend/internal/web/dist/*
+!/backend/internal/web/dist/.gitkeep
+
+# --- Editor / OS ---
+.DS_Store
+*.log
+.env
+.env.*
+!.env.example

@@ -6,6 +6,7 @@
 	import { browser } from '$app/environment';
 	import { applyTheme, getInitialTheme, type Theme } from '$lib/theme';
 	import { auth } from '$lib/auth.svelte';
+	import { breadcrumbs as crumbStore } from '$lib/breadcrumb.svelte';
 	import Icon, { type IconName } from '$lib/Icon.svelte';
 
 	let { children } = $props();
@@ -45,7 +46,8 @@
 		let acc = '';
 		for (const seg of path.split('/').filter(Boolean)) {
 			acc += `/${seg}`;
-			const label = seg.charAt(0).toUpperCase() + seg.slice(1).replace(/-/g, ' ');
+			const fallback = seg.charAt(0).toUpperCase() + seg.slice(1).replace(/-/g, ' ');
+			const label = crumbStore.overrides[acc] ?? fallback;
 			crumbs.push({ label, href: acc });
 		}
 		return crumbs;
@@ -211,6 +213,39 @@
 						</a>
 					{/if}
 
+					{#if auth.user}
+						<a
+							href="/settings"
+							title="User Profile"
+							class="mt-1 flex items-center gap-2 rounded-md px-2 py-2 hover:bg-slate-100 dark:hover:bg-slate-800"
+							class:justify-center={!expanded}
+							class:bg-slate-100={$page.url.pathname.startsWith('/settings')}
+							class:dark:bg-slate-800={$page.url.pathname.startsWith('/settings')}
+						>
+							{#if auth.user.avatarPath}
+								<img
+									src={auth.user.avatarPath}
+								alt="Profile"
+								class="h-8 w-8 shrink-0 rounded-full object-cover"
+							/>
+							{:else}
+								<span
+									class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sky-600 text-xs font-semibold text-white"
+								>
+									{initials}
+								</span>
+							{/if}
+							{#if expanded}
+								<span class="min-w-0">
+									<span class="block truncate text-xs font-medium">
+										{auth.user.displayName || auth.user.username}
+									</span>
+									<span class="block truncate text-xs text-slate-500">{auth.user.email}</span>
+								</span>
+							{/if}
+						</a>
+					{/if}
+
 					<button
 						type="button"
 						onclick={doLogout}
@@ -222,31 +257,6 @@
 						<Icon name="logout" class="h-5 w-5 shrink-0" />
 						{#if expanded}<span>Logout</span>{/if}
 					</button>
-
-					{#if auth.user}
-						<a
-							href="/settings"
-							title="User Profile"
-							class="mt-1 flex items-center gap-2 rounded-md px-2 py-2 hover:bg-slate-100 dark:hover:bg-slate-800"
-							class:justify-center={!expanded}
-							class:bg-slate-100={$page.url.pathname.startsWith('/settings')}
-							class:dark:bg-slate-800={$page.url.pathname.startsWith('/settings')}
-						>
-							<span
-								class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sky-600 text-xs font-semibold text-white"
-							>
-								{initials}
-							</span>
-							{#if expanded}
-								<span class="min-w-0">
-									<span class="block truncate text-xs font-medium">
-										{auth.user.displayName || auth.user.username}
-									</span>
-									<span class="block truncate text-xs text-slate-500">{auth.user.email}</span>
-								</span>
-							{/if}
-						</a>
-					{/if}
 				</div>
 			</aside>
 

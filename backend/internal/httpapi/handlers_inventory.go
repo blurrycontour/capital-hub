@@ -42,8 +42,25 @@ func (s *Server) writeInventoryError(w http.ResponseWriter, r *http.Request, err
 // ---------- Collections ----------
 
 type collectionPayload struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
+	Name          string                  `json:"name"`
+	Description   string                  `json:"description"`
+	Currency      string                  `json:"currency"`
+	LocationLat   *float64                `json:"locationLat"`
+	LocationLng   *float64                `json:"locationLng"`
+	LocationLabel string                  `json:"locationLabel"`
+	CustomFields  []inventory.CustomField `json:"customFields"`
+}
+
+func (p collectionPayload) toInput() inventory.CollectionInput {
+	return inventory.CollectionInput{
+		Name:          p.Name,
+		Description:   p.Description,
+		Currency:      p.Currency,
+		LocationLat:   p.LocationLat,
+		LocationLng:   p.LocationLng,
+		LocationLabel: p.LocationLabel,
+		CustomFields:  p.CustomFields,
+	}
 }
 
 func (s *Server) handleListCollections(w http.ResponseWriter, r *http.Request) {
@@ -78,7 +95,7 @@ func (s *Server) handleCreateCollection(w http.ResponseWriter, r *http.Request) 
 		writeAPIError(w, http.StatusBadRequest, "invalid json payload")
 		return
 	}
-	c, err := s.inventory.CreateCollection(r.Context(), user.ID, req.Name, req.Description)
+	c, err := s.inventory.CreateCollection(r.Context(), user.ID, req.toInput())
 	if err != nil {
 		if isValidationErr(err) {
 			writeAPIError(w, http.StatusBadRequest, err.Error())
@@ -102,7 +119,7 @@ func (s *Server) handleUpdateCollection(w http.ResponseWriter, r *http.Request) 
 		writeAPIError(w, http.StatusBadRequest, "invalid json payload")
 		return
 	}
-	c, err := s.inventory.UpdateCollection(r.Context(), user.ID, id, req.Name, req.Description)
+	c, err := s.inventory.UpdateCollection(r.Context(), user.ID, id, req.toInput())
 	if err != nil {
 		if isValidationErr(err) {
 			writeAPIError(w, http.StatusBadRequest, err.Error())
@@ -146,11 +163,13 @@ func (s *Server) handleCollectionStats(w http.ResponseWriter, r *http.Request) {
 // ---------- Items ----------
 
 type itemPayload struct {
-	Name          string   `json:"name"`
-	Description   string   `json:"description"`
-	LocationLat   *float64 `json:"locationLat"`
-	LocationLng   *float64 `json:"locationLng"`
-	LocationLabel string   `json:"locationLabel"`
+	Name          string                  `json:"name"`
+	Description   string                  `json:"description"`
+	LocationLat   *float64                `json:"locationLat"`
+	LocationLng   *float64                `json:"locationLng"`
+	LocationLabel string                  `json:"locationLabel"`
+	Attachments   []inventory.Attachment  `json:"attachments"`
+	CustomFields  []inventory.CustomField `json:"customFields"`
 }
 
 func (p itemPayload) toInput() inventory.ItemInput {
@@ -160,6 +179,8 @@ func (p itemPayload) toInput() inventory.ItemInput {
 		LocationLat:   p.LocationLat,
 		LocationLng:   p.LocationLng,
 		LocationLabel: p.LocationLabel,
+		Attachments:   p.Attachments,
+		CustomFields:  p.CustomFields,
 	}
 }
 
@@ -270,6 +291,51 @@ func (s *Server) handleItemStats(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"stats": stats})
 }
 
+// saveUploadedFile reads the multipart "file" field, validates its extension
+// against allowed, and stores it under the uploads directory. On failure it
+// writes an HTTP error and returns ok=false. On success it returns the public
+// path ("/uploads/<name>") and the original (sanitised) filename.
+func (s *Server) saveUploadedFile(w http.ResponseWriter, r *http.Request, allowed map[string]bool, action string) (storedPath, originalName string, ok bool) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxUploadBytes)
+	if err := r.ParseMultipartForm(maxUploadBytes); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "file too large or invalid upload")
+		return "", "", false
+	}
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "missing file field")
+		return "", "", false
+	}
+	defer file.Close()
+
+	ext := strings.ToLower(filepath.Ext(header.Filename))
+	if !allowed[ext] {
+		writeAPIError(w, http.StatusBadRequest, "unsupported file type")
+		return "", "", false
+	}
+
+	name, err := randomFileName(ext)
+	if err != nil {
+		s.writeInventoryError(w, r, err, action)
+		return "", "", false
+	}
+	dest := filepath.Join(s.cfg.UploadsDir(), name)
+	out, err := os.Create(dest)
+	if err != nil {
+		s.writeInventoryError(w, r, err, action)
+		return "", "", false
+	}
+	if _, err := io.Copy(out, file); err != nil {
+		out.Close()
+		_ = os.Remove(dest)
+		s.writeInventoryError(w, r, err, action)
+		return "", "", false
+	}
+	out.Close()
+
+	return "/uploads/" + name, filepath.Base(header.Filename), true
+}
+
 // handleUploadItemImage accepts a multipart "file" field and stores it on disk.
 func (s *Server) handleUploadItemImage(w http.ResponseWriter, r *http.Request) {
 	user := userFromContext(r)
@@ -279,46 +345,14 @@ func (s *Server) handleUploadItemImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	r.Body = http.MaxBytesReader(w, r.Body, maxUploadBytes)
-	if err := r.ParseMultipartForm(maxUploadBytes); err != nil {
-		writeAPIError(w, http.StatusBadRequest, "file too large or invalid upload")
-		return
-	}
-	file, header, err := r.FormFile("file")
-	if err != nil {
-		writeAPIError(w, http.StatusBadRequest, "missing file field")
-		return
-	}
-	defer file.Close()
-
-	ext := strings.ToLower(filepath.Ext(header.Filename))
-	if !allowedImageExt[ext] {
-		writeAPIError(w, http.StatusBadRequest, "unsupported image type")
+	stored, _, ok := s.saveUploadedFile(w, r, allowedImageExt, "upload image")
+	if !ok {
 		return
 	}
 
-	name, err := randomFileName(ext)
+	prev, err := s.inventory.SetItemImage(r.Context(), user.ID, id, stored)
 	if err != nil {
-		s.writeInventoryError(w, r, err, "upload image")
-		return
-	}
-	dest := filepath.Join(s.cfg.UploadsDir(), name)
-	out, err := os.Create(dest)
-	if err != nil {
-		s.writeInventoryError(w, r, err, "upload image")
-		return
-	}
-	if _, err := io.Copy(out, file); err != nil {
-		out.Close()
-		_ = os.Remove(dest)
-		s.writeInventoryError(w, r, err, "upload image")
-		return
-	}
-	out.Close()
-
-	prev, err := s.inventory.SetItemImage(r.Context(), user.ID, id, "/uploads/"+name)
-	if err != nil {
-		_ = os.Remove(dest)
+		_ = os.Remove(filepath.Join(s.cfg.UploadsDir(), filepath.Base(stored)))
 		s.writeInventoryError(w, r, err, "upload image")
 		return
 	}
@@ -335,12 +369,71 @@ func (s *Server) handleUploadItemImage(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"item": item})
 }
 
+// handleUploadItemAttachment stores a file and appends it to an item.
+func (s *Server) handleUploadItemAttachment(w http.ResponseWriter, r *http.Request) {
+	user := userFromContext(r)
+	id, ok := s.pathID(r)
+	if !ok {
+		writeAPIError(w, http.StatusBadRequest, "invalid item id")
+		return
+	}
+	stored, name, ok := s.saveUploadedFile(w, r, allowedAttachmentExt, "upload attachment")
+	if !ok {
+		return
+	}
+	item, err := s.inventory.AddItemAttachment(r.Context(), user.ID, id, inventory.Attachment{Name: name, Path: stored})
+	if err != nil {
+		_ = os.Remove(filepath.Join(s.cfg.UploadsDir(), filepath.Base(stored)))
+		s.writeInventoryError(w, r, err, "upload attachment")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"item": item})
+}
+
+// handleUploadEntryAttachment stores a file and appends it to an entry.
+func (s *Server) handleUploadEntryAttachment(w http.ResponseWriter, r *http.Request) {
+	user := userFromContext(r)
+	id, ok := s.pathID(r)
+	if !ok {
+		writeAPIError(w, http.StatusBadRequest, "invalid entry id")
+		return
+	}
+	stored, name, ok := s.saveUploadedFile(w, r, allowedAttachmentExt, "upload attachment")
+	if !ok {
+		return
+	}
+	entry, err := s.inventory.AddEntryAttachment(r.Context(), user.ID, id, inventory.Attachment{Name: name, Path: stored})
+	if err != nil {
+		_ = os.Remove(filepath.Join(s.cfg.UploadsDir(), filepath.Base(stored)))
+		s.writeInventoryError(w, r, err, "upload attachment")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"entry": entry})
+}
+
 var allowedImageExt = map[string]bool{
 	".jpg":  true,
 	".jpeg": true,
 	".png":  true,
 	".gif":  true,
 	".webp": true,
+}
+
+// allowedAttachmentExt covers common document and image types for attachments.
+var allowedAttachmentExt = map[string]bool{
+	".jpg":  true,
+	".jpeg": true,
+	".png":  true,
+	".gif":  true,
+	".webp": true,
+	".pdf":  true,
+	".txt":  true,
+	".csv":  true,
+	".doc":  true,
+	".docx": true,
+	".xls":  true,
+	".xlsx": true,
+	".zip":  true,
 }
 
 func randomFileName(ext string) (string, error) {
@@ -354,22 +447,20 @@ func randomFileName(ext string) (string, error) {
 // ---------- Entries ----------
 
 type entryPayload struct {
-	Kind       string  `json:"kind"`
-	Amount     float64 `json:"amount"`
-	Currency   string  `json:"currency"`
-	Quantity   float64 `json:"quantity"`
-	Note       string  `json:"note"`
-	OccurredOn string  `json:"occurredOn"`
+	Name        string                 `json:"name"`
+	Amount      float64                `json:"amount"`
+	Note        string                 `json:"note"`
+	OccurredOn  string                 `json:"occurredOn"`
+	Attachments []inventory.Attachment `json:"attachments"`
 }
 
 func (p entryPayload) toInput() inventory.EntryInput {
 	return inventory.EntryInput{
-		Kind:       p.Kind,
-		Amount:     p.Amount,
-		Currency:   p.Currency,
-		Quantity:   p.Quantity,
-		Note:       p.Note,
-		OccurredOn: p.OccurredOn,
+		Name:        p.Name,
+		Amount:      p.Amount,
+		Note:        p.Note,
+		OccurredOn:  p.OccurredOn,
+		Attachments: p.Attachments,
 	}
 }
 

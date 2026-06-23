@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { auth } from '$lib/auth.svelte';
-	import { updateProfile } from '$lib/api';
+	import { updateProfile, uploadAvatar } from '$lib/api';
 	import Icon from '$lib/Icon.svelte';
 
 	const user = $derived(auth.user);
@@ -12,6 +12,38 @@
 	let error = $state('');
 	let success = $state('');
 	let seededFor = $state<number | null>(null);
+
+	// Avatar upload state.
+	let avatarInput = $state<HTMLInputElement | null>(null);
+	let uploadingAvatar = $state(false);
+
+	const initials = $derived.by(() => {
+		const source = (user?.displayName || user?.username || '').trim();
+		if (!source) return '?';
+		const parts = source.split(/\s+/);
+		const letters =
+			parts.length > 1 ? parts[0][0] + parts[parts.length - 1][0] : source.slice(0, 2);
+		return letters.toUpperCase();
+	});
+
+	async function onAvatarChange(e: Event) {
+		const input = e.target as HTMLInputElement;
+		const file = input.files?.[0];
+		if (!file) return;
+		uploadingAvatar = true;
+		error = '';
+		success = '';
+		try {
+			const updated = await uploadAvatar(file);
+			auth.set(updated);
+			success = 'Profile picture updated';
+		} catch (err) {
+			error = err instanceof Error ? err.message : 'Failed to upload picture';
+		} finally {
+			uploadingAvatar = false;
+			input.value = '';
+		}
+	}
 
 	// Seed the form once per user without clobbering in-progress edits.
 	$effect(() => {
@@ -83,6 +115,42 @@
 			<div class="flex items-center gap-2">
 				<Icon name="user" class="h-5 w-5 text-slate-500" />
 				<h2 class="text-lg font-semibold">Profile</h2>
+			</div>
+
+			<!-- Profile picture -->
+			<div class="flex items-center gap-4">
+				{#if user.avatarPath}
+					<img
+						src={user.avatarPath}
+						alt="Profile"
+						class="h-16 w-16 rounded-full object-cover"
+					/>
+				{:else}
+					<span
+						class="flex h-16 w-16 items-center justify-center rounded-full bg-sky-600 text-lg font-semibold text-white"
+					>
+						{initials}
+					</span>
+				{/if}
+				<div>
+					<input
+						bind:this={avatarInput}
+						type="file"
+						accept="image/*"
+						class="hidden"
+						onchange={onAvatarChange}
+					/>
+					<button
+						type="button"
+						onclick={() => avatarInput?.click()}
+						disabled={uploadingAvatar}
+						class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100 disabled:opacity-60 dark:border-slate-700 dark:hover:bg-slate-800"
+					>
+						<Icon name="photo" class="h-4 w-4" />
+						{uploadingAvatar ? 'Uploading…' : user.avatarPath ? 'Change picture' : 'Upload picture'}
+					</button>
+					<p class="mt-1 text-xs text-slate-500">JPG, PNG, GIF or WebP.</p>
+				</div>
 			</div>
 
 			<div class="grid gap-4 sm:grid-cols-2">

@@ -3,6 +3,7 @@ export type ApiUser = {
 	username: string;
 	email: string;
 	displayName: string;
+	avatarPath: string;
 	isAdmin: boolean;
 	isActive: boolean;
 };
@@ -64,6 +65,19 @@ export async function updateProfile(payload: {
 			'X-CSRF-Token': csrf
 		},
 		body: JSON.stringify(payload)
+	});
+	const body = await parseJSON<{ user: ApiUser }>(res);
+	return body.user;
+}
+
+export async function uploadAvatar(file: File): Promise<ApiUser> {
+	const csrf = await fetchCSRFToken();
+	const form = new FormData();
+	form.append('file', file);
+	const res = await fetch('/api/v1/auth/me/avatar', {
+		method: 'POST',
+		headers: { 'X-CSRF-Token': csrf },
+		body: form
 	});
 	const body = await parseJSON<{ user: ApiUser }>(res);
 	return body.user;
@@ -155,10 +169,25 @@ export async function testSMTP(to: string): Promise<void> {
 
 // ---------- Inventory: collections, items, entries ----------
 
+export type CustomField = {
+	label: string;
+	value: string;
+};
+
+export type Attachment = {
+	name: string;
+	path: string;
+};
+
 export type Collection = {
 	id: number;
 	name: string;
 	description: string;
+	currency: string;
+	locationLat: number | null;
+	locationLng: number | null;
+	locationLabel: string;
+	customFields: CustomField[];
 	createdAt: string;
 	updatedAt: string;
 	createdBy: string;
@@ -175,6 +204,8 @@ export type Item = {
 	locationLat: number | null;
 	locationLng: number | null;
 	locationLabel: string;
+	attachments: Attachment[];
+	customFields: CustomField[];
 	createdAt: string;
 	updatedAt: string;
 	createdBy: string;
@@ -185,12 +216,12 @@ export type Item = {
 export type Entry = {
 	id: number;
 	itemId: number;
-	kind: string;
+	name: string;
 	amount: number;
 	currency: string;
-	quantity: number;
 	note: string;
 	occurredOn: string;
+	attachments: Attachment[];
 	createdAt: string;
 	updatedAt: string;
 	createdBy: string;
@@ -231,15 +262,26 @@ export type ItemInput = {
 	locationLat: number | null;
 	locationLng: number | null;
 	locationLabel: string;
+	attachments: Attachment[];
+	customFields: CustomField[];
 };
 
 export type EntryInput = {
-	kind: string;
+	name: string;
 	amount: number;
-	currency: string;
-	quantity: number;
 	note: string;
 	occurredOn: string;
+	attachments: Attachment[];
+};
+
+export type CollectionInput = {
+	name: string;
+	description: string;
+	currency: string;
+	locationLat: number | null;
+	locationLng: number | null;
+	locationLabel: string;
+	customFields: CustomField[];
 };
 
 async function mutate<T>(url: string, method: string, payload?: unknown): Promise<T> {
@@ -268,17 +310,14 @@ export async function getCollection(id: number): Promise<Collection> {
 	return body.collection;
 }
 
-export async function createCollection(payload: {
-	name: string;
-	description: string;
-}): Promise<Collection> {
+export async function createCollection(payload: CollectionInput): Promise<Collection> {
 	const body = await mutate<{ collection: Collection }>('/api/v1/collections', 'POST', payload);
 	return body.collection;
 }
 
 export async function updateCollection(
 	id: number,
-	payload: { name: string; description: string }
+	payload: CollectionInput
 ): Promise<Collection> {
 	const body = await mutate<{ collection: Collection }>(
 		`/api/v1/collections/${id}`,
@@ -349,6 +388,19 @@ export async function uploadItemImage(id: number, file: File): Promise<Item> {
 	return body.item;
 }
 
+export async function uploadItemAttachment(id: number, file: File): Promise<Item> {
+	const csrf = await fetchCSRFToken();
+	const form = new FormData();
+	form.append('file', file);
+	const res = await fetch(`/api/v1/items/${id}/attachments`, {
+		method: 'POST',
+		headers: { 'X-CSRF-Token': csrf },
+		body: form
+	});
+	const body = await parseJSON<{ item: Item }>(res);
+	return body.item;
+}
+
 // Entries
 
 export async function listEntries(itemId: number): Promise<Entry[]> {
@@ -371,6 +423,19 @@ export async function updateEntry(id: number, payload: EntryInput): Promise<Entr
 	return body.entry;
 }
 
+export async function uploadEntryAttachment(id: number, file: File): Promise<Entry> {
+	const csrf = await fetchCSRFToken();
+	const form = new FormData();
+	form.append('file', file);
+	const res = await fetch(`/api/v1/entries/${id}/attachments`, {
+		method: 'POST',
+		headers: { 'X-CSRF-Token': csrf },
+		body: form
+	});
+	const body = await parseJSON<{ entry: Entry }>(res);
+	return body.entry;
+}
+
 export async function deleteEntry(id: number): Promise<void> {
 	await mutate<{ ok: boolean }>(`/api/v1/entries/${id}`, 'DELETE');
 }
@@ -388,6 +453,24 @@ export async function getPortfolioStats(): Promise<PortfolioSummary> {
 	const body = await parseJSON<{ stats: PortfolioSummary }>(res);
 	return body.stats;
 }
+
+// Common currency codes offered in the UI.
+export const CURRENCIES = [
+	'USD',
+	'EUR',
+	'GBP',
+	'INR',
+	'SEK',
+	'NOK',
+	'DKK',
+	'JPY',
+	'CNY',
+	'CHF',
+	'CAD',
+	'AUD',
+	'SGD',
+	'AED'
+];
 
 // Format a currency total for display.
 export function formatCurrency(amount: number, currency: string): string {

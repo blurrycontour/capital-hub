@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -93,6 +95,32 @@ func (s *Server) handleUpdateMe(w http.ResponseWriter, r *http.Request) {
 		s.logger.WarnContext(r.Context(), "update profile failed", "user_id", current.ID, "error", err)
 		writeAPIError(w, http.StatusBadRequest, "failed to update profile")
 		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"user": updated})
+}
+
+// handleUploadAvatar stores an uploaded image and sets it as the user's avatar.
+func (s *Server) handleUploadAvatar(w http.ResponseWriter, r *http.Request) {
+	current := userFromContext(r)
+	if current == nil {
+		writeAPIError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	stored, _, ok := s.saveUploadedFile(w, r, allowedImageExt, "upload avatar")
+	if !ok {
+		return
+	}
+
+	updated, prev, err := s.auth.SetAvatar(r.Context(), current.ID, stored)
+	if err != nil {
+		_ = os.Remove(filepath.Join(s.cfg.UploadsDir(), filepath.Base(stored)))
+		s.logger.ErrorContext(r.Context(), "set avatar failed", "user_id", current.ID, "error", err)
+		writeAPIError(w, http.StatusInternalServerError, "failed to set avatar")
+		return
+	}
+	if prev != "" {
+		_ = os.Remove(filepath.Join(s.cfg.UploadsDir(), filepath.Base(prev)))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"user": updated})
 }

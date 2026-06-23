@@ -6,6 +6,7 @@ package inventory
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -24,50 +25,131 @@ type Service struct {
 // NewService builds an inventory service.
 func NewService(db *sql.DB) *Service { return &Service{db: db} }
 
+// CustomField is a user-defined label/value pair attached to a collection or
+// item, allowing arbitrary extra metadata.
+type CustomField struct {
+	Label string `json:"label"`
+	Value string `json:"value"`
+}
+
+// Attachment is a file uploaded against an item or entry.
+type Attachment struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+}
+
+// marshalJSONField serialises a slice for storage in a TEXT column, falling
+// back to an empty JSON array on error so the column is never NULL/invalid.
+func marshalJSONField(v any) string {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return "[]"
+	}
+	return string(b)
+}
+
+func unmarshalCustomFields(s string) []CustomField {
+	out := []CustomField{}
+	if strings.TrimSpace(s) == "" {
+		return out
+	}
+	_ = json.Unmarshal([]byte(s), &out)
+	if out == nil {
+		return []CustomField{}
+	}
+	return out
+}
+
+func unmarshalAttachments(s string) []Attachment {
+	out := []Attachment{}
+	if strings.TrimSpace(s) == "" {
+		return out
+	}
+	_ = json.Unmarshal([]byte(s), &out)
+	if out == nil {
+		return []Attachment{}
+	}
+	return out
+}
+
+func normalizeCustomFields(in []CustomField) []CustomField {
+	out := make([]CustomField, 0, len(in))
+	for _, f := range in {
+		label := strings.TrimSpace(f.Label)
+		if label == "" {
+			continue
+		}
+		out = append(out, CustomField{Label: label, Value: strings.TrimSpace(f.Value)})
+	}
+	return out
+}
+
+func normalizeAttachments(in []Attachment) []Attachment {
+	out := make([]Attachment, 0, len(in))
+	for _, a := range in {
+		if strings.TrimSpace(a.Path) == "" {
+			continue
+		}
+		name := strings.TrimSpace(a.Name)
+		if name == "" {
+			name = a.Path
+		}
+		out = append(out, Attachment{Name: name, Path: a.Path})
+	}
+	return out
+}
+
 // Collection is a named group of items owned by a user.
 type Collection struct {
-	ID          int64  `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	CreatedAt   string `json:"createdAt"`
-	UpdatedAt   string `json:"updatedAt"`
-	CreatedBy   string `json:"createdBy"`
-	UpdatedBy   string `json:"updatedBy"`
-	ItemCount   int    `json:"itemCount"`
+	ID            int64         `json:"id"`
+	Name          string        `json:"name"`
+	Description   string        `json:"description"`
+	Currency      string        `json:"currency"`
+	LocationLat   *float64      `json:"locationLat"`
+	LocationLng   *float64      `json:"locationLng"`
+	LocationLabel string        `json:"locationLabel"`
+	CustomFields  []CustomField `json:"customFields"`
+	CreatedAt     string        `json:"createdAt"`
+	UpdatedAt     string        `json:"updatedAt"`
+	CreatedBy     string        `json:"createdBy"`
+	UpdatedBy     string        `json:"updatedBy"`
+	ItemCount     int           `json:"itemCount"`
 }
 
 // Item is a single asset within a collection.
 type Item struct {
-	ID            int64    `json:"id"`
-	CollectionID  int64    `json:"collectionId"`
-	Name          string   `json:"name"`
-	Description   string   `json:"description"`
-	ImagePath     string   `json:"imagePath"`
-	LocationLat   *float64 `json:"locationLat"`
-	LocationLng   *float64 `json:"locationLng"`
-	LocationLabel string   `json:"locationLabel"`
-	CreatedAt     string   `json:"createdAt"`
-	UpdatedAt     string   `json:"updatedAt"`
-	CreatedBy     string   `json:"createdBy"`
-	UpdatedBy     string   `json:"updatedBy"`
-	EntryCount    int      `json:"entryCount"`
+	ID            int64         `json:"id"`
+	CollectionID  int64         `json:"collectionId"`
+	Name          string        `json:"name"`
+	Description   string        `json:"description"`
+	ImagePath     string        `json:"imagePath"`
+	LocationLat   *float64      `json:"locationLat"`
+	LocationLng   *float64      `json:"locationLng"`
+	LocationLabel string        `json:"locationLabel"`
+	Attachments   []Attachment  `json:"attachments"`
+	CustomFields  []CustomField `json:"customFields"`
+	CreatedAt     string        `json:"createdAt"`
+	UpdatedAt     string        `json:"updatedAt"`
+	CreatedBy     string        `json:"createdBy"`
+	UpdatedBy     string        `json:"updatedBy"`
+	EntryCount    int           `json:"entryCount"`
 }
 
-// Entry is a single transaction recorded against an item. Each entry carries
-// its own currency.
+// Entry is a single transaction recorded against an item. Its currency is
+// inherited from the owning collection.
 type Entry struct {
-	ID         int64   `json:"id"`
-	ItemID     int64   `json:"itemId"`
-	Kind       string  `json:"kind"`
-	Amount     float64 `json:"amount"`
-	Currency   string  `json:"currency"`
-	Quantity   float64 `json:"quantity"`
-	Note       string  `json:"note"`
-	OccurredOn string  `json:"occurredOn"`
-	CreatedAt  string  `json:"createdAt"`
-	UpdatedAt  string  `json:"updatedAt"`
-	CreatedBy  string  `json:"createdBy"`
-	UpdatedBy  string  `json:"updatedBy"`
+	ID          int64        `json:"id"`
+	ItemID      int64        `json:"itemId"`
+	Name        string       `json:"name"`
+	Amount      float64      `json:"amount"`
+	Currency    string       `json:"currency"`
+	Note        string       `json:"note"`
+	OccurredOn  string       `json:"occurredOn"`
+	Attachments []Attachment `json:"attachments"`
+	CreatedAt   string       `json:"createdAt"`
+	UpdatedAt   string       `json:"updatedAt"`
+	CreatedBy   string       `json:"createdBy"`
+	UpdatedBy   string       `json:"updatedBy"`
 }
 
 // CurrencyTotal is the aggregated value for a single currency.
@@ -87,7 +169,9 @@ type Stats struct {
 // ---------- Collections ----------
 
 const collectionSelect = `
-SELECT c.id, c.name, c.description, c.created_at, c.updated_at,
+SELECT c.id, c.name, c.description, c.currency,
+       c.location_lat, c.location_lng, c.location_label, c.custom_fields,
+       c.created_at, c.updated_at,
        COALESCE(cu.display_name, cu.username, ''),
        COALESCE(uu.display_name, uu.username, ''),
        (SELECT COUNT(*) FROM items i WHERE i.collection_id = c.id)
@@ -98,9 +182,13 @@ LEFT JOIN users uu ON uu.id = c.updated_by
 
 func scanCollection(s interface{ Scan(...any) error }) (Collection, error) {
 	var c Collection
-	if err := s.Scan(&c.ID, &c.Name, &c.Description, &c.CreatedAt, &c.UpdatedAt, &c.CreatedBy, &c.UpdatedBy, &c.ItemCount); err != nil {
+	var customFields string
+	if err := s.Scan(&c.ID, &c.Name, &c.Description, &c.Currency,
+		&c.LocationLat, &c.LocationLng, &c.LocationLabel, &customFields,
+		&c.CreatedAt, &c.UpdatedAt, &c.CreatedBy, &c.UpdatedBy, &c.ItemCount); err != nil {
 		return Collection{}, err
 	}
+	c.CustomFields = unmarshalCustomFields(customFields)
 	return c, nil
 }
 
@@ -136,15 +224,44 @@ func (s *Service) GetCollection(ctx context.Context, userID, id int64) (*Collect
 	return &c, nil
 }
 
+// CollectionInput carries the editable fields of a collection.
+type CollectionInput struct {
+	Name          string
+	Description   string
+	Currency      string
+	LocationLat   *float64
+	LocationLng   *float64
+	LocationLabel string
+	CustomFields  []CustomField
+}
+
+func normalizeCollection(in *CollectionInput) error {
+	in.Name = strings.TrimSpace(in.Name)
+	if in.Name == "" {
+		return errors.New("name is required")
+	}
+	in.Description = strings.TrimSpace(in.Description)
+	in.Currency = strings.ToUpper(strings.TrimSpace(in.Currency))
+	if in.Currency == "" {
+		in.Currency = "USD"
+	}
+	if len(in.Currency) > 8 {
+		return errors.New("currency code is too long")
+	}
+	in.LocationLabel = strings.TrimSpace(in.LocationLabel)
+	in.CustomFields = normalizeCustomFields(in.CustomFields)
+	return nil
+}
+
 // CreateCollection inserts a new collection owned by the user.
-func (s *Service) CreateCollection(ctx context.Context, userID int64, name, description string) (*Collection, error) {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return nil, errors.New("name is required")
+func (s *Service) CreateCollection(ctx context.Context, userID int64, in CollectionInput) (*Collection, error) {
+	if err := normalizeCollection(&in); err != nil {
+		return nil, err
 	}
 	res, err := s.db.ExecContext(ctx,
-		`INSERT INTO collections (user_id, name, description, created_by, updated_by) VALUES (?, ?, ?, ?, ?)`,
-		userID, name, strings.TrimSpace(description), userID, userID,
+		`INSERT INTO collections (user_id, name, description, currency, location_lat, location_lng, location_label, custom_fields, created_by, updated_by)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		userID, in.Name, in.Description, in.Currency, in.LocationLat, in.LocationLng, in.LocationLabel, marshalJSONField(in.CustomFields), userID, userID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create collection: %w", err)
@@ -154,15 +271,16 @@ func (s *Service) CreateCollection(ctx context.Context, userID int64, name, desc
 }
 
 // UpdateCollection updates an owned collection.
-func (s *Service) UpdateCollection(ctx context.Context, userID, id int64, name, description string) (*Collection, error) {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return nil, errors.New("name is required")
+func (s *Service) UpdateCollection(ctx context.Context, userID, id int64, in CollectionInput) (*Collection, error) {
+	if err := normalizeCollection(&in); err != nil {
+		return nil, err
 	}
 	res, err := s.db.ExecContext(ctx,
-		`UPDATE collections SET name = ?, description = ?, updated_at = datetime('now'), updated_by = ?
+		`UPDATE collections SET name = ?, description = ?, currency = ?, location_lat = ?, location_lng = ?,
+		 location_label = ?, custom_fields = ?, updated_at = datetime('now'), updated_by = ?
 		 WHERE id = ? AND user_id = ?`,
-		name, strings.TrimSpace(description), userID, id, userID,
+		in.Name, in.Description, in.Currency, in.LocationLat, in.LocationLng, in.LocationLabel,
+		marshalJSONField(in.CustomFields), userID, id, userID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("update collection: %w", err)
@@ -189,7 +307,7 @@ func (s *Service) DeleteCollection(ctx context.Context, userID, id int64) error 
 
 const itemSelect = `
 SELECT i.id, i.collection_id, i.name, i.description, i.image_path,
-       i.location_lat, i.location_lng, i.location_label,
+       i.location_lat, i.location_lng, i.location_label, i.attachments, i.custom_fields,
        i.created_at, i.updated_at,
        COALESCE(cu.display_name, cu.username, ''),
        COALESCE(uu.display_name, uu.username, ''),
@@ -202,11 +320,14 @@ LEFT JOIN users uu ON uu.id = i.updated_by
 
 func scanItem(s interface{ Scan(...any) error }) (Item, error) {
 	var it Item
+	var attachments, customFields string
 	if err := s.Scan(&it.ID, &it.CollectionID, &it.Name, &it.Description, &it.ImagePath,
-		&it.LocationLat, &it.LocationLng, &it.LocationLabel,
+		&it.LocationLat, &it.LocationLng, &it.LocationLabel, &attachments, &customFields,
 		&it.CreatedAt, &it.UpdatedAt, &it.CreatedBy, &it.UpdatedBy, &it.EntryCount); err != nil {
 		return Item{}, err
 	}
+	it.Attachments = unmarshalAttachments(attachments)
+	it.CustomFields = unmarshalCustomFields(customFields)
 	return it, nil
 }
 
@@ -255,6 +376,8 @@ type ItemInput struct {
 	LocationLat   *float64
 	LocationLng   *float64
 	LocationLabel string
+	Attachments   []Attachment
+	CustomFields  []CustomField
 }
 
 // CreateItem inserts an item into an owned collection.
@@ -267,9 +390,10 @@ func (s *Service) CreateItem(ctx context.Context, userID, collectionID int64, in
 		return nil, errors.New("name is required")
 	}
 	res, err := s.db.ExecContext(ctx,
-		`INSERT INTO items (collection_id, name, description, location_lat, location_lng, location_label, created_by, updated_by)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		collectionID, name, strings.TrimSpace(in.Description), in.LocationLat, in.LocationLng, strings.TrimSpace(in.LocationLabel), userID, userID,
+		`INSERT INTO items (collection_id, name, description, location_lat, location_lng, location_label, attachments, custom_fields, created_by, updated_by)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		collectionID, name, strings.TrimSpace(in.Description), in.LocationLat, in.LocationLng, strings.TrimSpace(in.LocationLabel),
+		marshalJSONField(normalizeAttachments(in.Attachments)), marshalJSONField(normalizeCustomFields(in.CustomFields)), userID, userID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create item: %w", err)
@@ -289,11 +413,30 @@ func (s *Service) UpdateItem(ctx context.Context, userID, id int64, in ItemInput
 	}
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE items SET name = ?, description = ?, location_lat = ?, location_lng = ?, location_label = ?,
-		 updated_at = datetime('now'), updated_by = ? WHERE id = ?`,
-		name, strings.TrimSpace(in.Description), in.LocationLat, in.LocationLng, strings.TrimSpace(in.LocationLabel), userID, id,
+		 attachments = ?, custom_fields = ?, updated_at = datetime('now'), updated_by = ? WHERE id = ?`,
+		name, strings.TrimSpace(in.Description), in.LocationLat, in.LocationLng, strings.TrimSpace(in.LocationLabel),
+		marshalJSONField(normalizeAttachments(in.Attachments)), marshalJSONField(normalizeCustomFields(in.CustomFields)), userID, id,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("update item: %w", err)
+	}
+	return s.GetItem(ctx, userID, id)
+}
+
+// AddItemAttachment appends an uploaded file to an owned item and returns the
+// refreshed record.
+func (s *Service) AddItemAttachment(ctx context.Context, userID, id int64, att Attachment) (*Item, error) {
+	item, err := s.GetItem(ctx, userID, id)
+	if err != nil {
+		return nil, err
+	}
+	next := append(item.Attachments, att)
+	_, err = s.db.ExecContext(ctx,
+		`UPDATE items SET attachments = ?, updated_at = datetime('now'), updated_by = ? WHERE id = ?`,
+		marshalJSONField(normalizeAttachments(next)), userID, id,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("add item attachment: %w", err)
 	}
 	return s.GetItem(ctx, userID, id)
 }
@@ -333,7 +476,7 @@ func (s *Service) DeleteItem(ctx context.Context, userID, id int64) error {
 // ---------- Entries ----------
 
 const entrySelect = `
-SELECT e.id, e.item_id, e.kind, e.amount, e.currency, e.quantity, e.note, e.occurred_on,
+SELECT e.id, e.item_id, e.name, e.amount, e.currency, e.note, e.occurred_on, e.attachments,
        e.created_at, e.updated_at,
        COALESCE(cu.display_name, cu.username, ''),
        COALESCE(uu.display_name, uu.username, '')
@@ -346,11 +489,34 @@ LEFT JOIN users uu ON uu.id = e.updated_by
 
 func scanEntry(s interface{ Scan(...any) error }) (Entry, error) {
 	var e Entry
-	if err := s.Scan(&e.ID, &e.ItemID, &e.Kind, &e.Amount, &e.Currency, &e.Quantity, &e.Note, &e.OccurredOn,
+	var attachments string
+	if err := s.Scan(&e.ID, &e.ItemID, &e.Name, &e.Amount, &e.Currency, &e.Note, &e.OccurredOn, &attachments,
 		&e.CreatedAt, &e.UpdatedAt, &e.CreatedBy, &e.UpdatedBy); err != nil {
 		return Entry{}, err
 	}
+	e.Attachments = unmarshalAttachments(attachments)
 	return e, nil
+}
+
+// collectionCurrencyForItem returns the currency of the collection that owns an
+// item, scoped to the requesting user.
+func (s *Service) collectionCurrencyForItem(ctx context.Context, userID, itemID int64) (string, error) {
+	var currency string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT c.currency FROM items i JOIN collections c ON c.id = i.collection_id
+		 WHERE i.id = ? AND c.user_id = ?`,
+		itemID, userID,
+	).Scan(&currency)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", ErrNotFound
+		}
+		return "", fmt.Errorf("resolve collection currency: %w", err)
+	}
+	if strings.TrimSpace(currency) == "" {
+		currency = "USD"
+	}
+	return currency, nil
 }
 
 // ListEntries returns entries for an owned item, newest first.
@@ -378,36 +544,24 @@ func (s *Service) ListEntries(ctx context.Context, userID, itemID int64) ([]Entr
 	return out, rows.Err()
 }
 
-// EntryInput carries the editable fields of an entry.
+// EntryInput carries the editable fields of an entry. The currency is not part
+// of the input: it is inherited from the owning collection.
 type EntryInput struct {
-	Kind       string
-	Amount     float64
-	Currency   string
-	Quantity   float64
-	Note       string
-	OccurredOn string
+	Name        string
+	Amount      float64
+	Note        string
+	OccurredOn  string
+	Attachments []Attachment
 }
 
 func normalizeEntry(in *EntryInput) error {
-	in.Kind = strings.TrimSpace(in.Kind)
-	if in.Kind == "" {
-		in.Kind = "valuation"
-	}
-	in.Currency = strings.ToUpper(strings.TrimSpace(in.Currency))
-	if in.Currency == "" {
-		in.Currency = "USD"
-	}
-	if len(in.Currency) > 8 {
-		return errors.New("currency code is too long")
-	}
-	if in.Quantity == 0 {
-		in.Quantity = 1
-	}
+	in.Name = strings.TrimSpace(in.Name)
 	in.OccurredOn = strings.TrimSpace(in.OccurredOn)
 	if in.OccurredOn == "" {
 		in.OccurredOn = time.Now().UTC().Format("2006-01-02")
 	}
 	in.Note = strings.TrimSpace(in.Note)
+	in.Attachments = normalizeAttachments(in.Attachments)
 	return nil
 }
 
@@ -424,7 +578,8 @@ func (s *Service) GetEntry(ctx context.Context, userID, id int64) (*Entry, error
 	return &e, nil
 }
 
-// CreateEntry records a new transaction entry against an owned item.
+// CreateEntry records a new transaction entry against an owned item. The
+// currency is inherited from the owning collection.
 func (s *Service) CreateEntry(ctx context.Context, userID, itemID int64, in EntryInput) (*Entry, error) {
 	if _, err := s.GetItem(ctx, userID, itemID); err != nil {
 		return nil, err
@@ -432,10 +587,14 @@ func (s *Service) CreateEntry(ctx context.Context, userID, itemID int64, in Entr
 	if err := normalizeEntry(&in); err != nil {
 		return nil, err
 	}
+	currency, err := s.collectionCurrencyForItem(ctx, userID, itemID)
+	if err != nil {
+		return nil, err
+	}
 	res, err := s.db.ExecContext(ctx,
-		`INSERT INTO entries (item_id, kind, amount, currency, quantity, note, occurred_on, created_by, updated_by)
+		`INSERT INTO entries (item_id, name, amount, currency, note, occurred_on, attachments, created_by, updated_by)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		itemID, in.Kind, in.Amount, in.Currency, in.Quantity, in.Note, in.OccurredOn, userID, userID,
+		itemID, in.Name, in.Amount, currency, in.Note, in.OccurredOn, marshalJSONField(in.Attachments), userID, userID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create entry: %w", err)
@@ -444,21 +603,44 @@ func (s *Service) CreateEntry(ctx context.Context, userID, itemID int64, in Entr
 	return s.GetEntry(ctx, userID, id)
 }
 
-// UpdateEntry updates an owned entry.
+// UpdateEntry updates an owned entry. The currency is re-synced from the owning
+// collection so it always reflects the collection's configured currency.
 func (s *Service) UpdateEntry(ctx context.Context, userID, id int64, in EntryInput) (*Entry, error) {
-	if _, err := s.GetEntry(ctx, userID, id); err != nil {
+	current, err := s.GetEntry(ctx, userID, id)
+	if err != nil {
 		return nil, err
 	}
 	if err := normalizeEntry(&in); err != nil {
 		return nil, err
 	}
-	_, err := s.db.ExecContext(ctx,
-		`UPDATE entries SET kind = ?, amount = ?, currency = ?, quantity = ?, note = ?, occurred_on = ?,
+	currency, err := s.collectionCurrencyForItem(ctx, userID, current.ItemID)
+	if err != nil {
+		return nil, err
+	}
+	_, err = s.db.ExecContext(ctx,
+		`UPDATE entries SET name = ?, amount = ?, currency = ?, note = ?, occurred_on = ?, attachments = ?,
 		 updated_at = datetime('now'), updated_by = ? WHERE id = ?`,
-		in.Kind, in.Amount, in.Currency, in.Quantity, in.Note, in.OccurredOn, userID, id,
+		in.Name, in.Amount, currency, in.Note, in.OccurredOn, marshalJSONField(in.Attachments), userID, id,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("update entry: %w", err)
+	}
+	return s.GetEntry(ctx, userID, id)
+}
+
+// AddEntryAttachment appends an uploaded file to an owned entry.
+func (s *Service) AddEntryAttachment(ctx context.Context, userID, id int64, att Attachment) (*Entry, error) {
+	entry, err := s.GetEntry(ctx, userID, id)
+	if err != nil {
+		return nil, err
+	}
+	next := append(entry.Attachments, att)
+	_, err = s.db.ExecContext(ctx,
+		`UPDATE entries SET attachments = ?, updated_at = datetime('now'), updated_by = ? WHERE id = ?`,
+		marshalJSONField(normalizeAttachments(next)), userID, id,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("add entry attachment: %w", err)
 	}
 	return s.GetEntry(ctx, userID, id)
 }

@@ -77,6 +77,7 @@ func (s *Server) routes() error {
 			authRouter.With(s.requireAuth, s.requireCSRF).Post("/logout", s.handleLogout)
 			authRouter.With(s.requireAuth).Get("/me", s.handleMe)
 			authRouter.With(s.requireAuth, s.requireCSRF).Patch("/me", s.handleUpdateMe)
+			authRouter.With(s.requireAuth, s.requireCSRF).Post("/me/avatar", s.handleUploadAvatar)
 		})
 
 		api.Route("/notifications", func(n chi.Router) {
@@ -103,6 +104,7 @@ func (s *Server) routes() error {
 			it.With(s.requireCSRF).Patch("/{id}", s.handleUpdateItem)
 			it.With(s.requireCSRF).Delete("/{id}", s.handleDeleteItem)
 			it.With(s.requireCSRF).Post("/{id}/image", s.handleUploadItemImage)
+			it.With(s.requireCSRF).Post("/{id}/attachments", s.handleUploadItemAttachment)
 			it.Get("/{id}/stats", s.handleItemStats)
 			it.Get("/{id}/entries", s.handleListEntries)
 			it.With(s.requireCSRF).Post("/{id}/entries", s.handleCreateEntry)
@@ -112,6 +114,7 @@ func (s *Server) routes() error {
 			e.Use(s.requireAuth)
 			e.With(s.requireCSRF).Patch("/{id}", s.handleUpdateEntry)
 			e.With(s.requireCSRF).Delete("/{id}", s.handleDeleteEntry)
+			e.With(s.requireCSRF).Post("/{id}/attachments", s.handleUploadEntryAttachment)
 		})
 
 		api.With(s.requireAuth).Get("/search", s.handleSearch)

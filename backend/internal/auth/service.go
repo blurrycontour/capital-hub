@@ -22,6 +22,7 @@ type User struct {
 	Username    string `json:"username"`
 	Email       string `json:"email"`
 	DisplayName string `json:"displayName"`
+	AvatarPath  string `json:"avatarPath"`
 	IsAdmin     bool   `json:"isAdmin"`
 	IsActive    bool   `json:"isActive"`
 }
@@ -51,11 +52,11 @@ func (s *Service) Login(ctx context.Context, identifier, password, userAgent, re
 
 	err := s.db.QueryRowContext(
 		ctx,
-		`SELECT id, username, email, display_name, is_admin, is_active, password_hash
+		`SELECT id, username, email, display_name, avatar_path, is_admin, is_active, password_hash
 		 FROM users WHERE (username = ? OR email = ?) LIMIT 1`,
 		identifier,
 		identifier,
-	).Scan(&user.ID, &user.Username, &user.Email, &user.DisplayName, &isAdmin, &isActive, &passwordHash)
+	).Scan(&user.ID, &user.Username, &user.Email, &user.DisplayName, &user.AvatarPath, &isAdmin, &isActive, &passwordHash)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, "", time.Time{}, errors.New("invalid credentials")
@@ -117,14 +118,14 @@ func (s *Service) CurrentUser(ctx context.Context, sessionID string) (*User, err
 	var isActive int
 	err := s.db.QueryRowContext(
 		ctx,
-		`SELECT u.id, u.username, u.email, u.display_name, u.is_admin, u.is_active
+		`SELECT u.id, u.username, u.email, u.display_name, u.avatar_path, u.is_admin, u.is_active
 		 FROM sessions s
 		 JOIN users u ON u.id = s.user_id
 		 WHERE s.id = ?
 		   AND datetime(s.expires_at) > datetime('now')
 		 LIMIT 1`,
 		sessionID,
-	).Scan(&user.ID, &user.Username, &user.Email, &user.DisplayName, &isAdmin, &isActive)
+	).Scan(&user.ID, &user.Username, &user.Email, &user.DisplayName, &user.AvatarPath, &isAdmin, &isActive)
 	if err != nil {
 		return nil, err
 	}
@@ -161,9 +162,9 @@ func (s *Service) UpdateProfile(ctx context.Context, userID int64, displayName, 
 	var isActive int
 	err = s.db.QueryRowContext(
 		ctx,
-		`SELECT id, username, email, display_name, is_admin, is_active FROM users WHERE id = ? LIMIT 1`,
+		`SELECT id, username, email, display_name, avatar_path, is_admin, is_active FROM users WHERE id = ? LIMIT 1`,
 		userID,
-	).Scan(&user.ID, &user.Username, &user.Email, &user.DisplayName, &isAdmin, &isActive)
+	).Scan(&user.ID, &user.Username, &user.Email, &user.DisplayName, &user.AvatarPath, &isAdmin, &isActive)
 	if err != nil {
 		return nil, fmt.Errorf("reload user: %w", err)
 	}
@@ -172,11 +173,43 @@ func (s *Service) UpdateProfile(ctx context.Context, userID int64, displayName, 
 	return &user, nil
 }
 
+// SetAvatar updates the user's avatar path and returns the previous one (so the
+// caller can clean up the replaced file) along with the refreshed user.
+func (s *Service) SetAvatar(ctx context.Context, userID int64, avatarPath string) (*User, string, error) {
+	var prev string
+	if err := s.db.QueryRowContext(ctx, `SELECT avatar_path FROM users WHERE id = ? LIMIT 1`, userID).Scan(&prev); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, "", errors.New("user not found")
+		}
+		return nil, "", fmt.Errorf("lookup avatar: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE users SET avatar_path = ?, updated_at = datetime('now') WHERE id = ?`,
+		avatarPath, userID,
+	); err != nil {
+		return nil, "", fmt.Errorf("set avatar: %w", err)
+	}
+
+	var user User
+	var isAdmin int
+	var isActive int
+	if err := s.db.QueryRowContext(
+		ctx,
+		`SELECT id, username, email, display_name, avatar_path, is_admin, is_active FROM users WHERE id = ? LIMIT 1`,
+		userID,
+	).Scan(&user.ID, &user.Username, &user.Email, &user.DisplayName, &user.AvatarPath, &isAdmin, &isActive); err != nil {
+		return nil, "", fmt.Errorf("reload user: %w", err)
+	}
+	user.IsAdmin = isAdmin == 1
+	user.IsActive = isActive == 1
+	return &user, prev, nil
+}
+
 // ListUsers returns all users ordered by creation date.
 func (s *Service) ListUsers(ctx context.Context) ([]User, error) {
 	rows, err := s.db.QueryContext(
 		ctx,
-		`SELECT id, username, email, display_name, is_admin, is_active
+		`SELECT id, username, email, display_name, avatar_path, is_admin, is_active
 		 FROM users ORDER BY created_at ASC`,
 	)
 	if err != nil {
@@ -189,7 +222,7 @@ func (s *Service) ListUsers(ctx context.Context) ([]User, error) {
 		var u User
 		var isAdmin int
 		var isActive int
-		if err := rows.Scan(&u.ID, &u.Username, &u.Email, &u.DisplayName, &isAdmin, &isActive); err != nil {
+		if err := rows.Scan(&u.ID, &u.Username, &u.Email, &u.DisplayName, &u.AvatarPath, &isAdmin, &isActive); err != nil {
 			return nil, fmt.Errorf("scan user: %w", err)
 		}
 		u.IsAdmin = isAdmin == 1
@@ -228,14 +261,14 @@ func (s *Service) ResolveOrCreateOIDCUser(
 	var isActive int
 	err := s.db.QueryRowContext(
 		ctx,
-		`SELECT u.id, u.username, u.email, u.display_name, u.is_admin, u.is_active
+		`SELECT u.id, u.username, u.email, u.display_name, u.avatar_path, u.is_admin, u.is_active
 		 FROM oidc_identities oi
 		 JOIN users u ON u.id = oi.user_id
 		 WHERE oi.provider = ? AND oi.subject = ?
 		 LIMIT 1`,
 		provider,
 		subject,
-	).Scan(&user.ID, &user.Username, &user.Email, &user.DisplayName, &isAdmin, &isActive)
+	).Scan(&user.ID, &user.Username, &user.Email, &user.DisplayName, &user.AvatarPath, &isAdmin, &isActive)
 	if err == nil {
 		user.IsAdmin = isAdmin == 1 || makeAdmin
 		user.IsActive = isActive == 1

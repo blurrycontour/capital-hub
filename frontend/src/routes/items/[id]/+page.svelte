@@ -1,15 +1,22 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { page } from '$app/stores';
+	import { goto } from '$app/navigation';
 	import Icon from '$lib/Icon.svelte';
 	import Modal from '$lib/Modal.svelte';
 	import LocationPicker from '$lib/LocationPicker.svelte';
+	import CustomFieldsEditor from '$lib/CustomFieldsEditor.svelte';
+	import MapView from '$lib/MapView.svelte';
+	import { breadcrumbs } from '$lib/breadcrumb.svelte';
 	import {
 		getItem,
 		updateItem,
 		deleteItem,
 		uploadItemImage,
+		uploadItemAttachment,
+		uploadEntryAttachment,
 		getItemStats,
+		getCollection,
 		listEntries,
 		createEntry,
 		updateEntry,
@@ -18,17 +25,21 @@
 		type Item,
 		type Entry,
 		type Stats,
-		type EntryInput
+		type Collection,
+		type EntryInput,
+		type CustomField
 	} from '$lib/api';
-	import { goto } from '$app/navigation';
 
 	const itemId = $derived(Number($page.params.id));
 
 	let item = $state<Item | null>(null);
+	let collection = $state<Collection | null>(null);
 	let entries = $state<Entry[]>([]);
 	let stats = $state<Stats | null>(null);
 	let loading = $state(true);
 	let error = $state('');
+
+	const currency = $derived(collection?.currency ?? 'USD');
 
 	// Edit item modal
 	let editModal = $state(false);
@@ -37,6 +48,7 @@
 	let eLat = $state<number | null>(null);
 	let eLng = $state<number | null>(null);
 	let eLabel = $state('');
+	let eFields = $state<CustomField[]>([]);
 	let savingItem = $state(false);
 
 	let deleteItemModal = $state(false);
@@ -46,23 +58,37 @@
 	let fileInput = $state<HTMLInputElement | null>(null);
 	let uploading = $state(false);
 
+	// Item attachment upload
+	let attachInput = $state<HTMLInputElement | null>(null);
+	let uploadingAttachment = $state(false);
+
 	// Entry modal
 	let entryModal = $state(false);
 	let editingEntry = $state<Entry | null>(null);
-	let enKind = $state('valuation');
+	let enName = $state('');
 	let enAmount = $state(0);
-	let enCurrency = $state('USD');
-	let enQuantity = $state(1);
 	let enNote = $state('');
 	let enDate = $state('');
 	let savingEntry = $state(false);
+	let entryAttachInput = $state<HTMLInputElement | null>(null);
+	let uploadingEntryAttachment = $state(false);
 
 	let deleteEntryTarget = $state<Entry | null>(null);
 	let deletingEntry = $state(false);
 
 	let metadataModal = $state(false);
 
-	const kinds = ['valuation', 'purchase', 'sale', 'income', 'expense', 'fee'];
+	const itemMarkers = $derived.by(() =>
+		item && item.locationLat != null && item.locationLng != null
+			? [
+					{
+						lat: item.locationLat,
+						lng: item.locationLng,
+						label: item.locationLabel || item.name
+					}
+				]
+			: []
+	);
 
 	async function loadAll() {
 		[item, entries, stats] = await Promise.all([
@@ -70,6 +96,12 @@
 			listEntries(itemId),
 			getItemStats(itemId)
 		]);
+		breadcrumbs.set(`/items/${itemId}`, item.name);
+		try {
+			collection = await getCollection(item.collectionId);
+		} catch {
+			collection = null;
+		}
 	}
 
 	onMount(async () => {
@@ -82,6 +114,8 @@
 		}
 	});
 
+	onDestroy(() => breadcrumbs.clear(`/items/${itemId}`));
+
 	function openEdit() {
 		if (!item) return;
 		eName = item.name;
@@ -89,6 +123,7 @@
 		eLat = item.locationLat;
 		eLng = item.locationLng;
 		eLabel = item.locationLabel;
+		eFields = item.customFields.map((f) => ({ ...f }));
 		editModal = true;
 	}
 
@@ -97,14 +132,16 @@
 		savingItem = true;
 		error = '';
 		try {
-			await updateItem(item.id, {
+			item = await updateItem(item.id, {
 				name: eName.trim(),
 				description: eDescription.trim(),
 				locationLat: eLat,
 				locationLng: eLng,
-				locationLabel: eLabel.trim()
+				locationLabel: eLabel.trim(),
+				attachments: item.attachments,
+				customFields: eFields.filter((f) => f.label.trim() || f.value.trim())
 			});
-			await loadAll();
+			breadcrumbs.set(`/items/${item.id}`, item.name);
 			editModal = false;
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to save item';
@@ -119,7 +156,7 @@
 		try {
 			const collectionId = item.collectionId;
 			await deleteItem(item.id);
-			await goto(`/collections?c=${collectionId}`);
+			await goto(`/collections/${collectionId}`);
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to delete item';
 			deletingItem = false;
@@ -142,16 +179,30 @@
 		}
 	}
 
+	async function onAttachmentChange(e: Event) {
+		const input = e.target as HTMLInputElement;
+		const file = input.files?.[0];
+		if (!file || !item) return;
+		uploadingAttachment = true;
+		error = '';
+		try {
+			item = await uploadItemAttachment(item.id, file);
+		} catch (err) {
+			error = err instanceof Error ? err.message : 'Failed to upload attachment';
+		} finally {
+			uploadingAttachment = false;
+			input.value = '';
+		}
+	}
+
 	function todayISO() {
 		return new Date().toISOString().slice(0, 10);
 	}
 
 	function openCreateEntry() {
 		editingEntry = null;
-		enKind = 'valuation';
+		enName = '';
 		enAmount = 0;
-		enCurrency = 'USD';
-		enQuantity = 1;
 		enNote = '';
 		enDate = todayISO();
 		entryModal = true;
@@ -159,10 +210,8 @@
 
 	function openEditEntry(entry: Entry) {
 		editingEntry = entry;
-		enKind = entry.kind;
+		enName = entry.name;
 		enAmount = entry.amount;
-		enCurrency = entry.currency;
-		enQuantity = entry.quantity;
 		enNote = entry.note;
 		enDate = entry.occurredOn ? entry.occurredOn.slice(0, 10) : todayISO();
 		entryModal = true;
@@ -173,21 +222,19 @@
 		savingEntry = true;
 		error = '';
 		const payload: EntryInput = {
-			kind: enKind,
+			name: enName.trim(),
 			amount: Number(enAmount),
-			currency: enCurrency.trim().toUpperCase(),
-			quantity: Number(enQuantity),
 			note: enNote.trim(),
-			occurredOn: enDate
+			occurredOn: enDate,
+			attachments: editingEntry?.attachments ?? []
 		};
 		try {
 			if (editingEntry) {
-				await updateEntry(editingEntry.id, payload);
+				editingEntry = await updateEntry(editingEntry.id, payload);
 			} else {
-				await createEntry(item.id, payload);
+				editingEntry = await createEntry(item.id, payload);
 			}
-			await loadAll();
-			entryModal = false;
+			[entries, stats] = await Promise.all([listEntries(item.id), getItemStats(item.id)]);
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to save entry';
 		} finally {
@@ -195,25 +242,36 @@
 		}
 	}
 
+	async function onEntryAttachmentChange(e: Event) {
+		const input = e.target as HTMLInputElement;
+		const file = input.files?.[0];
+		if (!file || !editingEntry) return;
+		uploadingEntryAttachment = true;
+		error = '';
+		try {
+			editingEntry = await uploadEntryAttachment(editingEntry.id, file);
+			if (item) entries = await listEntries(item.id);
+		} catch (err) {
+			error = err instanceof Error ? err.message : 'Failed to upload attachment';
+		} finally {
+			uploadingEntryAttachment = false;
+			input.value = '';
+		}
+	}
+
 	async function confirmDeleteEntry() {
-		if (!deleteEntryTarget) return;
+		if (!deleteEntryTarget || !item) return;
 		deletingEntry = true;
 		try {
 			await deleteEntry(deleteEntryTarget.id);
 			deleteEntryTarget = null;
-			await loadAll();
+			[entries, stats] = await Promise.all([listEntries(item.id), getItemStats(item.id)]);
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to delete entry';
 		} finally {
 			deletingEntry = false;
 		}
 	}
-
-	const mapHref = $derived(
-		item && item.locationLat != null && item.locationLng != null
-			? `https://www.openstreetmap.org/?mlat=${item.locationLat}&mlon=${item.locationLng}#map=15/${item.locationLat}/${item.locationLng}`
-			: ''
-	);
 </script>
 
 <section class="mx-auto max-w-4xl space-y-6">
@@ -227,10 +285,11 @@
 		</div>
 	{:else if item}
 		<a
-			href={`/collections?c=${item.collectionId}`}
+			href={`/collections/${item.collectionId}`}
 			class="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
 		>
-			<Icon name="chevron-left" class="h-4 w-4" /> Back to collection
+			<Icon name="chevron-left" class="h-4 w-4" />
+			{collection ? collection.name : 'Back to collection'}
 		</a>
 
 		{#if error}
@@ -306,15 +365,24 @@
 				{/if}
 
 				{#if item.locationLat != null && item.locationLng != null}
-					<a
-						href={mapHref}
-						target="_blank"
-						rel="noopener noreferrer"
-						class="inline-flex items-center gap-1.5 text-sm text-sky-600 hover:underline dark:text-sky-400"
-					>
+					<p class="inline-flex items-center gap-1.5 text-sm text-slate-500">
 						<Icon name="map-pin" class="h-4 w-4" />
 						{item.locationLabel || `${item.locationLat.toFixed(5)}, ${item.locationLng.toFixed(5)}`}
-					</a>
+					</p>
+				{/if}
+
+				<!-- Custom fields -->
+				{#if item.customFields.length > 0}
+					<dl class="grid gap-x-6 gap-y-1 sm:grid-cols-2">
+						{#each item.customFields as field (field.label + field.value)}
+							<div
+								class="flex justify-between gap-3 border-b border-slate-100 py-1 text-sm dark:border-slate-800"
+							>
+								<dt class="text-slate-500">{field.label}</dt>
+								<dd class="font-medium">{field.value}</dd>
+							</div>
+						{/each}
+					</dl>
 				{/if}
 
 				<!-- Stats -->
@@ -335,6 +403,55 @@
 			</div>
 		</div>
 
+		<!-- Location map -->
+		{#if itemMarkers.length > 0}
+			<div>
+				<h2 class="mb-2 text-lg font-semibold">Location</h2>
+				<MapView markers={itemMarkers} height="h-64" />
+			</div>
+		{/if}
+
+		<!-- Attachments -->
+		<div>
+			<div class="mb-2 flex items-center justify-between">
+				<h2 class="text-lg font-semibold">Attachments</h2>
+				<input
+					bind:this={attachInput}
+					type="file"
+					class="hidden"
+					onchange={onAttachmentChange}
+				/>
+				<button
+					type="button"
+					class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm hover:bg-slate-100 disabled:opacity-60 dark:border-slate-700 dark:hover:bg-slate-800"
+					onclick={() => attachInput?.click()}
+					disabled={uploadingAttachment}
+				>
+					<Icon name="plus" class="h-4 w-4" />
+					{uploadingAttachment ? 'Uploading…' : 'Add attachment'}
+				</button>
+			</div>
+			{#if item.attachments.length === 0}
+				<p class="text-sm text-slate-500">No attachments.</p>
+			{:else}
+				<ul class="flex flex-wrap gap-2">
+					{#each item.attachments as att (att.path)}
+						<li>
+							<a
+								href={att.path}
+								target="_blank"
+								rel="noopener noreferrer"
+								class="inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-2.5 py-1.5 text-sm hover:bg-slate-100 dark:border-slate-800 dark:hover:bg-slate-800"
+							>
+								<Icon name="photo" class="h-4 w-4 text-slate-400" />
+								{att.name}
+							</a>
+						</li>
+					{/each}
+				</ul>
+			{/if}
+		</div>
+
 		<!-- Entries -->
 		<div class="flex items-center justify-between">
 			<h2 class="text-lg font-semibold">Entries</h2>
@@ -348,18 +465,21 @@
 		</div>
 
 		{#if entries.length === 0}
-			<p class="rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500 dark:border-slate-700">
+			<p
+				class="rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500 dark:border-slate-700"
+			>
 				No entries yet. Add a valuation, purchase or sale to start tracking value.
 			</p>
 		{:else}
 			<div class="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800">
 				<table class="w-full text-sm">
-					<thead class="bg-slate-50 text-left text-xs uppercase text-slate-500 dark:bg-slate-800/50">
+					<thead
+						class="bg-slate-50 text-left text-xs uppercase text-slate-500 dark:bg-slate-800/50"
+					>
 						<tr>
 							<th class="px-3 py-2 font-medium">Date</th>
-							<th class="px-3 py-2 font-medium">Kind</th>
+							<th class="px-3 py-2 font-medium">Name</th>
 							<th class="px-3 py-2 font-medium">Note</th>
-							<th class="px-3 py-2 text-right font-medium">Qty</th>
 							<th class="px-3 py-2 text-right font-medium">Amount</th>
 							<th class="px-3 py-2"></th>
 						</tr>
@@ -368,13 +488,16 @@
 						{#each entries as entry (entry.id)}
 							<tr class="hover:bg-slate-50 dark:hover:bg-slate-800/40">
 								<td class="px-3 py-2 whitespace-nowrap">{entry.occurredOn}</td>
-								<td class="px-3 py-2">
-									<span class="rounded-full bg-slate-100 px-2 py-0.5 text-xs capitalize dark:bg-slate-800">
-										{entry.kind}
-									</span>
+								<td class="px-3 py-2 font-medium">
+									{entry.name || '—'}
+									{#if entry.attachments.length > 0}
+										<span class="ml-1 inline-flex items-center gap-0.5 text-xs text-slate-400">
+											<Icon name="photo" class="h-3.5 w-3.5" />
+											{entry.attachments.length}
+										</span>
+									{/if}
 								</td>
 								<td class="px-3 py-2 text-slate-600 dark:text-slate-400">{entry.note}</td>
-								<td class="px-3 py-2 text-right">{entry.quantity}</td>
 								<td class="px-3 py-2 text-right font-medium whitespace-nowrap">
 									{formatCurrency(entry.amount, entry.currency)}
 								</td>
@@ -407,7 +530,7 @@
 	{/if}
 </section>
 
-<!-- Edit item modal (with location) -->
+<!-- Edit item modal -->
 <Modal title="Edit item" bind:open={editModal}>
 	<div class="space-y-3">
 		<label class="block text-sm">
@@ -426,6 +549,12 @@
 				class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
 			></textarea>
 		</label>
+		<div class="text-sm">
+			<span class="text-slate-600 dark:text-slate-400">Custom fields</span>
+			<div class="mt-1">
+				<CustomFieldsEditor bind:fields={eFields} />
+			</div>
+		</div>
 		<div>
 			<span class="text-sm text-slate-600 dark:text-slate-400">Location</span>
 			{#if editModal}
@@ -457,15 +586,13 @@
 	<div class="space-y-3">
 		<div class="grid grid-cols-2 gap-3">
 			<label class="block text-sm">
-				<span class="text-slate-600 dark:text-slate-400">Kind</span>
-				<select
-					bind:value={enKind}
-					class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm capitalize dark:border-slate-700 dark:bg-slate-800"
-				>
-					{#each kinds as k (k)}
-						<option value={k}>{k}</option>
-					{/each}
-				</select>
+				<span class="text-slate-600 dark:text-slate-400">Name</span>
+				<input
+					type="text"
+					bind:value={enName}
+					placeholder="e.g. Purchase"
+					class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+				/>
 			</label>
 			<label class="block text-sm">
 				<span class="text-slate-600 dark:text-slate-400">Date</span>
@@ -476,32 +603,12 @@
 				/>
 			</label>
 		</div>
-		<div class="grid grid-cols-[1fr_7rem] gap-3">
-			<label class="block text-sm">
-				<span class="text-slate-600 dark:text-slate-400">Amount</span>
-				<input
-					type="number"
-					step="any"
-					bind:value={enAmount}
-					class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
-				/>
-			</label>
-			<label class="block text-sm">
-				<span class="text-slate-600 dark:text-slate-400">Currency</span>
-				<input
-					type="text"
-					maxlength="8"
-					bind:value={enCurrency}
-					class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm uppercase dark:border-slate-700 dark:bg-slate-800"
-				/>
-			</label>
-		</div>
 		<label class="block text-sm">
-			<span class="text-slate-600 dark:text-slate-400">Quantity</span>
+			<span class="text-slate-600 dark:text-slate-400">Amount ({currency})</span>
 			<input
 				type="number"
 				step="any"
-				bind:value={enQuantity}
+				bind:value={enAmount}
 				class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
 			/>
 		</label>
@@ -513,6 +620,50 @@
 				class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
 			></textarea>
 		</label>
+
+		<!-- Entry attachments (available once the entry exists) -->
+		<div class="text-sm">
+			<div class="flex items-center justify-between">
+				<span class="text-slate-600 dark:text-slate-400">Attachments</span>
+				<input
+					bind:this={entryAttachInput}
+					type="file"
+					class="hidden"
+					onchange={onEntryAttachmentChange}
+				/>
+				<button
+					type="button"
+					class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100 disabled:opacity-60 dark:border-slate-700 dark:hover:bg-slate-800"
+					onclick={() => entryAttachInput?.click()}
+					disabled={!editingEntry || uploadingEntryAttachment}
+					title={editingEntry ? '' : 'Save the entry first to add attachments'}
+				>
+					<Icon name="plus" class="h-3.5 w-3.5" />
+					{uploadingEntryAttachment ? 'Uploading…' : 'Add'}
+				</button>
+			</div>
+			{#if !editingEntry}
+				<p class="mt-1 text-xs text-slate-500">Save the entry first to attach files.</p>
+			{:else if editingEntry.attachments.length === 0}
+				<p class="mt-1 text-xs text-slate-500">No attachments.</p>
+			{:else}
+				<ul class="mt-1 flex flex-wrap gap-2">
+					{#each editingEntry.attachments as att (att.path)}
+						<li>
+							<a
+								href={att.path}
+								target="_blank"
+								rel="noopener noreferrer"
+								class="inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-2 py-1 text-xs hover:bg-slate-100 dark:border-slate-800 dark:hover:bg-slate-800"
+							>
+								<Icon name="photo" class="h-3.5 w-3.5 text-slate-400" />
+								{att.name}
+							</a>
+						</li>
+					{/each}
+				</ul>
+			{/if}
+		</div>
 	</div>
 	{#snippet footer()}
 		<button
@@ -520,7 +671,7 @@
 			class="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
 			onclick={() => (entryModal = false)}
 		>
-			Cancel
+			Close
 		</button>
 		<button
 			type="button"
@@ -587,7 +738,9 @@
 	open={deleteEntryTarget !== null}
 	onclose={() => (deleteEntryTarget = null)}
 >
-	<p class="text-sm text-slate-600 dark:text-slate-400">Delete this entry? This cannot be undone.</p>
+	<p class="text-sm text-slate-600 dark:text-slate-400">
+		Delete this entry? This cannot be undone.
+	</p>
 	{#snippet footer()}
 		<button
 			type="button"

@@ -50,10 +50,10 @@
 			<span class="flex h-12 w-12 items-center justify-center rounded-xl bg-white/15">
 				<Icon name="logo" class="h-7 w-7" />
 			</span>
-			<span class="text-2xl font-bold">Capital&#8209;Hub</span>
+			<span class="text-2xl font-bold">Capital Hub</span>
 		</div>
 		<div class="space-y-3">
-			<h1 class="text-3xl font-bold leading-tight">Welcome to Capital&#8209;Hub</h1>
+			<h1 class="text-3xl font-bold leading-tight">Welcome to Capital Hub</h1>
 			<p class="max-w-md text-sky-100/90">
 				Self-hosted asset management. Track collections, organize your portfolio, and stay on top of
 				notifications — all in one place.

@@ -15,7 +15,6 @@
 
 	// Sidebar layout state (persisted).
 	let collapsed = $state(false);
-	let hovering = $state(false);
 
 	const SIDEBAR_KEY = 'ch-sidebar';
 
@@ -27,8 +26,8 @@
 		{ href: '/notifications', label: 'Notifications', icon: 'bell' }
 	];
 
-	// A collapsed sidebar temporarily expands as an overlay while hovered.
-	const expanded = $derived(!collapsed || hovering);
+	// The sidebar is expanded unless explicitly collapsed (pure toggle).
+	const expanded = $derived(!collapsed);
 
 	const initials = $derived.by(() => {
 		const u = auth.user;
@@ -135,41 +134,17 @@
 				class="sticky top-0 z-20 flex h-screen shrink-0 flex-col border-r border-slate-200 bg-white transition-all duration-150 dark:border-slate-800 dark:bg-slate-900"
 				class:w-64={expanded}
 				class:w-16={!expanded}
-				onmouseenter={() => (hovering = true)}
-				onmouseleave={() => (hovering = false)}
 			>
 				<div
 					class="flex h-14 shrink-0 items-center border-b border-slate-200 px-3 dark:border-slate-800"
-					class:justify-between={expanded}
 					class:justify-center={!expanded}
 				>
-					{#if expanded}
-						<div class="flex min-w-0 items-center gap-2">
-							<span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-sky-600 text-white">
-								<Icon name="logo" class="h-5 w-5" />
-							</span>
-							<span class="truncate font-semibold">Capital-Hub</span>
-						</div>
-						<button
-							type="button"
-							onclick={toggleCollapsed}
-							title="Collapse sidebar"
-							aria-label="Collapse sidebar"
-							class="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-slate-100"
-						>
-							<Icon name="panel-left" class="h-5 w-5" />
-						</button>
-					{:else}
-						<button
-							type="button"
-							onclick={toggleCollapsed}
-							title="Expand sidebar"
-							aria-label="Expand sidebar"
-							class="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-600 text-white hover:bg-sky-500"
-						>
+					<div class="flex min-w-0 items-center gap-2">
+						<span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-sky-600 text-white">
 							<Icon name="logo" class="h-5 w-5" />
-						</button>
-					{/if}
+						</span>
+						{#if expanded}<span class="truncate font-semibold">Capital Hub</span>{/if}
+					</div>
 				</div>
 
 				<nav class="flex-1 space-y-1 overflow-y-auto p-2 text-sm">
@@ -264,23 +239,34 @@
 				<header
 					class="flex h-14 items-center justify-between border-b border-slate-200 px-4 dark:border-slate-800"
 				>
-					<nav class="flex items-center gap-1 text-sm" aria-label="Breadcrumb">
-						{#each breadcrumbs as crumb, i (crumb.href)}
-							{#if i > 0}
-								<Icon name="chevron-divider" class="h-3.5 w-3.5 text-slate-400" />
-							{/if}
-							{#if i === breadcrumbs.length - 1}
-								<span class="font-medium text-slate-900 dark:text-slate-100">{crumb.label}</span>
-							{:else}
-								<a
-									href={crumb.href}
-									class="rounded px-1 text-slate-500 hover:text-sky-600 hover:underline"
-								>
-									{crumb.label}
-								</a>
-							{/if}
-						{/each}
-					</nav>
+					<div class="flex min-w-0 items-center gap-2">
+						<button
+							type="button"
+							onclick={toggleCollapsed}
+							title={expanded ? 'Collapse sidebar' : 'Expand sidebar'}
+							aria-label={expanded ? 'Collapse sidebar' : 'Expand sidebar'}
+							class="shrink-0 rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+						>
+							<Icon name="panel-left" class="h-5 w-5" />
+						</button>
+						<nav class="flex min-w-0 items-center gap-1 text-sm" aria-label="Breadcrumb">
+							{#each breadcrumbs as crumb, i (crumb.href)}
+								{#if i > 0}
+									<Icon name="chevron-divider" class="h-3.5 w-3.5 shrink-0 text-slate-400" />
+								{/if}
+								{#if i === breadcrumbs.length - 1}
+									<span class="truncate font-medium text-slate-900 dark:text-slate-100">{crumb.label}</span>
+								{:else}
+									<a
+										href={crumb.href}
+										class="shrink-0 rounded px-1 text-slate-500 hover:text-sky-600 hover:underline"
+									>
+										{crumb.label}
+									</a>
+								{/if}
+							{/each}
+						</nav>
+					</div>
 					<div class="flex items-center gap-2">
 						<button
 							type="button"

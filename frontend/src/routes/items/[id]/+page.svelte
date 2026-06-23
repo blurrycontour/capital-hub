@@ -7,12 +7,15 @@
 	import LocationPicker from '$lib/LocationPicker.svelte';
 	import CustomFieldsEditor from '$lib/CustomFieldsEditor.svelte';
 	import MapView from '$lib/MapView.svelte';
+	import ImageGallery from '$lib/ImageGallery.svelte';
+	import ConfirmDeleteModal from '$lib/ConfirmDeleteModal.svelte';
 	import { breadcrumbs } from '$lib/breadcrumb.svelte';
 	import {
 		getItem,
 		updateItem,
 		deleteItem,
 		uploadItemImage,
+		deleteItemImage,
 		uploadItemAttachment,
 		uploadEntryAttachment,
 		getItemStats,
@@ -55,7 +58,6 @@
 	let deletingItem = $state(false);
 
 	// Image upload
-	let fileInput = $state<HTMLInputElement | null>(null);
 	let uploading = $state(false);
 
 	// Item attachment upload
@@ -75,6 +77,37 @@
 
 	let deleteEntryTarget = $state<Entry | null>(null);
 	let deletingEntry = $state(false);
+
+	// Entry sorting
+	let sort = $state<{ key: 'occurredOn' | 'name' | 'amount'; dir: 'asc' | 'desc' }>({
+		key: 'occurredOn',
+		dir: 'desc'
+	});
+
+	const sortedEntries = $derived.by(() => {
+		const list = [...entries];
+		const { key, dir } = sort;
+		list.sort((a, b) => {
+			let cmp = 0;
+			if (key === 'amount') {
+				cmp = a.amount - b.amount;
+			} else if (key === 'name') {
+				cmp = a.name.localeCompare(b.name);
+			} else {
+				cmp = (a.occurredOn || '').localeCompare(b.occurredOn || '');
+			}
+			return dir === 'asc' ? cmp : -cmp;
+		});
+		return list;
+	});
+
+	function toggleSort(key: 'occurredOn' | 'name' | 'amount') {
+		if (sort.key === key) {
+			sort = { key, dir: sort.dir === 'asc' ? 'desc' : 'asc' };
+		} else {
+			sort = { key, dir: 'asc' };
+		}
+	}
 
 	let metadataModal = $state(false);
 
@@ -138,6 +171,7 @@
 				locationLat: eLat,
 				locationLng: eLng,
 				locationLabel: eLabel.trim(),
+				images: item.images,
 				attachments: item.attachments,
 				customFields: eFields.filter((f) => f.label.trim() || f.value.trim())
 			});
@@ -163,10 +197,8 @@
 		}
 	}
 
-	async function onFileChange(e: Event) {
-		const input = e.target as HTMLInputElement;
-		const file = input.files?.[0];
-		if (!file || !item) return;
+	async function onAddImage(file: File) {
+		if (!item) return;
 		uploading = true;
 		error = '';
 		try {
@@ -175,7 +207,19 @@
 			error = err instanceof Error ? err.message : 'Failed to upload image';
 		} finally {
 			uploading = false;
-			input.value = '';
+		}
+	}
+
+	async function onDeleteImage(path: string) {
+		if (!item) return;
+		uploading = true;
+		error = '';
+		try {
+			item = await deleteItemImage(item.id, path);
+		} catch (err) {
+			error = err instanceof Error ? err.message : 'Failed to delete image';
+		} finally {
+			uploading = false;
 		}
 	}
 
@@ -235,6 +279,7 @@
 				editingEntry = await createEntry(item.id, payload);
 			}
 			[entries, stats] = await Promise.all([listEntries(item.id), getItemStats(item.id)]);
+			entryModal = false;
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to save entry';
 		} finally {
@@ -300,36 +345,7 @@
 			</div>
 		{/if}
 
-		<div class="grid gap-6 md:grid-cols-[16rem_1fr]">
-			<!-- Image + upload -->
-			<div class="space-y-2">
-				<div
-					class="flex aspect-square items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-100 dark:border-slate-800 dark:bg-slate-800"
-				>
-					{#if item.imagePath}
-						<img src={item.imagePath} alt={item.name} class="h-full w-full object-cover" />
-					{:else}
-						<Icon name="photo" class="h-12 w-12 text-slate-400" />
-					{/if}
-				</div>
-				<input
-					bind:this={fileInput}
-					type="file"
-					accept="image/*"
-					class="hidden"
-					onchange={onFileChange}
-				/>
-				<button
-					type="button"
-					class="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm hover:bg-slate-100 disabled:opacity-60 dark:border-slate-700 dark:hover:bg-slate-800"
-					onclick={() => fileInput?.click()}
-					disabled={uploading}
-				>
-					<Icon name="photo" class="h-4 w-4" />
-					{uploading ? 'Uploading…' : item.imagePath ? 'Replace photo' : 'Add photo'}
-				</button>
-			</div>
-
+		<div class="space-y-3">
 			<!-- Details -->
 			<div class="space-y-3">
 				<div class="flex flex-wrap items-start justify-between gap-2">
@@ -401,6 +417,17 @@
 					</div>
 				{/if}
 			</div>
+		</div>
+
+		<!-- Images -->
+		<div>
+			<h2 class="mb-2 text-lg font-semibold">Images</h2>
+			<ImageGallery
+				images={item.images}
+				onadd={onAddImage}
+				ondelete={onDeleteImage}
+				{uploading}
+			/>
 		</div>
 
 		<!-- Location map -->
@@ -477,15 +504,57 @@
 						class="bg-slate-50 text-left text-xs uppercase text-slate-500 dark:bg-slate-800/50"
 					>
 						<tr>
-							<th class="px-3 py-2 font-medium">Date</th>
-							<th class="px-3 py-2 font-medium">Name</th>
+							<th class="px-3 py-2 font-medium">
+								<button
+									type="button"
+									class="inline-flex items-center gap-1 hover:text-slate-700 dark:hover:text-slate-300"
+									onclick={() => toggleSort('occurredOn')}
+								>
+									Date
+									{#if sort.key === 'occurredOn'}
+										<Icon
+											name="chevron-down"
+											class={`h-3.5 w-3.5 ${sort.dir === 'asc' ? 'rotate-180' : ''}`}
+										/>
+									{/if}
+								</button>
+							</th>
+							<th class="px-3 py-2 font-medium">
+								<button
+									type="button"
+									class="inline-flex items-center gap-1 hover:text-slate-700 dark:hover:text-slate-300"
+									onclick={() => toggleSort('name')}
+								>
+									Name
+									{#if sort.key === 'name'}
+										<Icon
+											name="chevron-down"
+											class={`h-3.5 w-3.5 ${sort.dir === 'asc' ? 'rotate-180' : ''}`}
+										/>
+									{/if}
+								</button>
+							</th>
 							<th class="px-3 py-2 font-medium">Note</th>
-							<th class="px-3 py-2 text-right font-medium">Amount</th>
+							<th class="px-3 py-2 text-right font-medium">
+								<button
+									type="button"
+									class="ml-auto inline-flex items-center gap-1 hover:text-slate-700 dark:hover:text-slate-300"
+									onclick={() => toggleSort('amount')}
+								>
+									Amount
+									{#if sort.key === 'amount'}
+										<Icon
+											name="chevron-down"
+											class={`h-3.5 w-3.5 ${sort.dir === 'asc' ? 'rotate-180' : ''}`}
+										/>
+									{/if}
+								</button>
+							</th>
 							<th class="px-3 py-2"></th>
 						</tr>
 					</thead>
 					<tbody class="divide-y divide-slate-100 dark:divide-slate-800">
-						{#each entries as entry (entry.id)}
+						{#each sortedEntries as entry (entry.id)}
 							<tr class="hover:bg-slate-50 dark:hover:bg-slate-800/40">
 								<td class="px-3 py-2 whitespace-nowrap">{entry.occurredOn}</td>
 								<td class="px-3 py-2 font-medium">
@@ -709,28 +778,16 @@
 </Modal>
 
 <!-- Delete item modal -->
-<Modal title="Delete item" bind:open={deleteItemModal}>
-	<p class="text-sm text-slate-600 dark:text-slate-400">
-		Delete <strong>{item?.name}</strong> and all of its entries? This cannot be undone.
-	</p>
-	{#snippet footer()}
-		<button
-			type="button"
-			class="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
-			onclick={() => (deleteItemModal = false)}
-		>
-			Cancel
-		</button>
-		<button
-			type="button"
-			class="rounded-md bg-rose-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-60"
-			onclick={confirmDeleteItem}
-			disabled={deletingItem}
-		>
-			{deletingItem ? 'Deleting…' : 'Delete'}
-		</button>
-	{/snippet}
-</Modal>
+{#if item}
+	<ConfirmDeleteModal
+		bind:open={deleteItemModal}
+		name={item.name}
+		title="Delete item"
+		message="This will delete the item and all of its entries. This action cannot be undone."
+		deleting={deletingItem}
+		onconfirm={confirmDeleteItem}
+	/>
+{/if}
 
 <!-- Delete entry modal -->
 <Modal

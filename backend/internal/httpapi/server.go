@@ -104,6 +104,7 @@ func (s *Server) routes() error {
 			it.With(s.requireCSRF).Patch("/{id}", s.handleUpdateItem)
 			it.With(s.requireCSRF).Delete("/{id}", s.handleDeleteItem)
 			it.With(s.requireCSRF).Post("/{id}/image", s.handleUploadItemImage)
+			it.With(s.requireCSRF).Delete("/{id}/image", s.handleDeleteItemImage)
 			it.With(s.requireCSRF).Post("/{id}/attachments", s.handleUploadItemAttachment)
 			it.Get("/{id}/stats", s.handleItemStats)
 			it.Get("/{id}/entries", s.handleListEntries)

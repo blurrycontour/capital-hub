@@ -165,6 +165,7 @@ func (s *Server) handleCollectionStats(w http.ResponseWriter, r *http.Request) {
 type itemPayload struct {
 	Name          string                  `json:"name"`
 	Description   string                  `json:"description"`
+	Images        []string                `json:"images"`
 	LocationLat   *float64                `json:"locationLat"`
 	LocationLng   *float64                `json:"locationLng"`
 	LocationLabel string                  `json:"locationLabel"`
@@ -176,6 +177,7 @@ func (p itemPayload) toInput() inventory.ItemInput {
 	return inventory.ItemInput{
 		Name:          p.Name,
 		Description:   p.Description,
+		Images:        p.Images,
 		LocationLat:   p.LocationLat,
 		LocationLng:   p.LocationLng,
 		LocationLabel: p.LocationLabel,
@@ -336,7 +338,8 @@ func (s *Server) saveUploadedFile(w http.ResponseWriter, r *http.Request, allowe
 	return "/uploads/" + name, filepath.Base(header.Filename), true
 }
 
-// handleUploadItemImage accepts a multipart "file" field and stores it on disk.
+// handleUploadItemImage accepts a multipart "file" field and appends it to the
+// item's image gallery.
 func (s *Server) handleUploadItemImage(w http.ResponseWriter, r *http.Request) {
 	user := userFromContext(r)
 	id, ok := s.pathID(r)
@@ -350,22 +353,39 @@ func (s *Server) handleUploadItemImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	prev, err := s.inventory.SetItemImage(r.Context(), user.ID, id, stored)
+	item, err := s.inventory.AddItemImage(r.Context(), user.ID, id, stored)
 	if err != nil {
 		_ = os.Remove(filepath.Join(s.cfg.UploadsDir(), filepath.Base(stored)))
 		s.writeInventoryError(w, r, err, "upload image")
 		return
 	}
-	// Best-effort cleanup of the replaced file.
-	if prev != "" {
-		_ = os.Remove(filepath.Join(s.cfg.UploadsDir(), filepath.Base(prev)))
-	}
 
-	item, err := s.inventory.GetItem(r.Context(), user.ID, id)
-	if err != nil {
-		s.writeInventoryError(w, r, err, "upload image")
+	writeJSON(w, http.StatusOK, map[string]any{"item": item})
+}
+
+// handleDeleteItemImage removes an image from an item's gallery and deletes the
+// underlying file.
+func (s *Server) handleDeleteItemImage(w http.ResponseWriter, r *http.Request) {
+	user := userFromContext(r)
+	id, ok := s.pathID(r)
+	if !ok {
+		writeAPIError(w, http.StatusBadRequest, "invalid item id")
 		return
 	}
+	var req struct {
+		Path string `json:"path"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Path) == "" {
+		writeAPIError(w, http.StatusBadRequest, "invalid json payload")
+		return
+	}
+	item, err := s.inventory.RemoveItemImage(r.Context(), user.ID, id, req.Path)
+	if err != nil {
+		s.writeInventoryError(w, r, err, "delete image")
+		return
+	}
+	// Best-effort removal of the underlying file.
+	_ = os.Remove(filepath.Join(s.cfg.UploadsDir(), filepath.Base(req.Path)))
 	writeJSON(w, http.StatusOK, map[string]any{"item": item})
 }
 

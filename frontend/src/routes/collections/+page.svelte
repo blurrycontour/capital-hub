@@ -16,6 +16,19 @@
 	let loading = $state(true);
 	let error = $state('');
 
+	// Card vs. list view (persisted).
+	const VIEW_KEY = 'ch-view-collections';
+	let view = $state<'card' | 'list'>('card');
+
+	function setView(v: 'card' | 'list') {
+		view = v;
+		try {
+			localStorage.setItem(VIEW_KEY, v);
+		} catch {
+			/* ignore */
+		}
+	}
+
 	// Create modal state.
 	let createModal = $state(false);
 	let cName = $state('');
@@ -40,6 +53,15 @@
 	}
 
 	onMount(load);
+
+	onMount(() => {
+		try {
+			const raw = localStorage.getItem(VIEW_KEY);
+			if (raw === 'list' || raw === 'card') view = raw;
+		} catch {
+			/* ignore */
+		}
+	});
 
 	function openCreate() {
 		cName = '';
@@ -81,14 +103,42 @@
 <section class="mx-auto max-w-5xl space-y-6">
 	<header class="flex flex-wrap items-center justify-between gap-3">
 		<h1 class="text-2xl font-bold">Collections</h1>
-		<button
-			type="button"
-			class="inline-flex items-center gap-1.5 rounded-md bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-700"
-			onclick={openCreate}
-		>
-			<Icon name="plus" class="h-4 w-4" />
-			New collection
-		</button>
+		<div class="flex items-center gap-2">
+			<div class="inline-flex rounded-md border border-slate-300 p-0.5 dark:border-slate-700">
+				<button
+					type="button"
+					class="rounded p-1.5"
+					class:bg-slate-200={view === 'card'}
+					class:dark:bg-slate-700={view === 'card'}
+					class:text-slate-500={view !== 'card'}
+					title="Card view"
+					aria-label="Card view"
+					onclick={() => setView('card')}
+				>
+					<Icon name="grid" class="h-4 w-4" />
+				</button>
+				<button
+					type="button"
+					class="rounded p-1.5"
+					class:bg-slate-200={view === 'list'}
+					class:dark:bg-slate-700={view === 'list'}
+					class:text-slate-500={view !== 'list'}
+					title="List view"
+					aria-label="List view"
+					onclick={() => setView('list')}
+				>
+					<Icon name="list" class="h-4 w-4" />
+				</button>
+			</div>
+			<button
+				type="button"
+				class="inline-flex items-center gap-1.5 rounded-md bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-700"
+				onclick={openCreate}
+			>
+				<Icon name="plus" class="h-4 w-4" />
+				New collection
+			</button>
+		</div>
 	</header>
 
 	{#if error}
@@ -116,6 +166,39 @@
 				New collection
 			</button>
 		</div>
+	{:else if view === 'list'}
+		<ul class="divide-y divide-slate-200 overflow-hidden rounded-lg border border-slate-200 dark:divide-slate-800 dark:border-slate-800">
+			{#each collections as c (c.id)}
+				<li>
+					<a
+						href={`/collections/${c.id}`}
+						class="flex items-center gap-3 px-4 py-3 transition hover:bg-slate-50 dark:hover:bg-slate-800/60"
+					>
+						<span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-slate-100 text-slate-500 dark:bg-slate-800">
+							<Icon name="collections" class="h-4 w-4" />
+						</span>
+						<div class="min-w-0 flex-1">
+							<div class="flex items-center gap-2">
+								<span class="truncate font-medium">{c.name}</span>
+								{#if c.locationLat != null && c.locationLng != null}
+									<Icon name="map-pin" class="h-3.5 w-3.5 shrink-0 text-slate-400" />
+								{/if}
+							</div>
+							{#if c.description}
+								<p class="truncate text-sm text-slate-500">{c.description}</p>
+							{/if}
+						</div>
+						<span class="shrink-0 text-xs text-slate-500">{c.itemCount} items</span>
+						<span
+							class="inline-flex shrink-0 items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+						>
+							<Icon name="currency" class="h-3.5 w-3.5" />
+							{c.currency}
+						</span>
+					</a>
+				</li>
+			{/each}
+		</ul>
 	{:else}
 		<ul class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
 			{#each collections as c (c.id)}

@@ -59,7 +59,7 @@
 			<h1 class="text-2xl font-bold">
 				Welcome back{user ? `, ${user.displayName || user.username}` : ''}
 			</h1>
-			<p class="text-sm text-slate-600 dark:text-slate-400">Here's an overview of your portfolio.</p>
+			<p class="text-sm text-slate-600 dark:text-slate-400">Here's an overview of your capitals!</p>
 		</div>
 		<span
 			class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium"

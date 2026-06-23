@@ -7,6 +7,7 @@
 	import LocationPicker from '$lib/LocationPicker.svelte';
 	import CustomFieldsEditor from '$lib/CustomFieldsEditor.svelte';
 	import MapView from '$lib/MapView.svelte';
+	import ConfirmDeleteModal from '$lib/ConfirmDeleteModal.svelte';
 	import { breadcrumbs } from '$lib/breadcrumb.svelte';
 	import {
 		getCollection,
@@ -57,6 +58,19 @@
 	let deleteModal = $state(false);
 	let deleting = $state(false);
 
+	// Card vs. list view for items (persisted).
+	const VIEW_KEY = 'ch-view-items';
+	let itemsView = $state<'card' | 'list'>('card');
+
+	function setItemsView(v: 'card' | 'list') {
+		itemsView = v;
+		try {
+			localStorage.setItem(VIEW_KEY, v);
+		} catch {
+			/* ignore */
+		}
+	}
+
 	const mapMarkers = $derived.by(() => {
 		const markers: { lat: number; lng: number; label?: string; href?: string }[] = [];
 		if (collection?.locationLat != null && collection?.locationLng != null) {
@@ -98,6 +112,15 @@
 
 	onMount(load);
 	onDestroy(() => breadcrumbs.clear(`/collections/${collectionId}`));
+
+	onMount(() => {
+		try {
+			const raw = localStorage.getItem(VIEW_KEY);
+			if (raw === 'list' || raw === 'card') itemsView = raw;
+		} catch {
+			/* ignore */
+		}
+	});
 
 	function openEdit() {
 		if (!collection) return;
@@ -170,6 +193,7 @@
 				locationLat: iUseLocation ? iLat : null,
 				locationLng: iUseLocation ? iLng : null,
 				locationLabel: iUseLocation ? iLabel.trim() : '',
+				images: [],
 				attachments: [],
 				customFields: iFields.filter((f) => f.label.trim() || f.value.trim())
 			});
@@ -207,9 +231,9 @@
 	{:else if collection}
 		<!-- Header -->
 		<div class="rounded-lg border border-slate-200 p-5 dark:border-slate-800">
-			<div class="flex flex-wrap items-start justify-between gap-3">
-				<div>
-					<div class="flex items-center gap-2">
+			<div class="flex items-start justify-between gap-3">
+				<div class="min-w-0">
+					<div class="flex flex-wrap items-center gap-2">
 						<h1 class="text-xl font-semibold">{collection.name}</h1>
 						<span
 							class="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300"
@@ -228,7 +252,7 @@
 						</p>
 					{/if}
 				</div>
-				<div class="flex items-center gap-2">
+				<div class="flex shrink-0 items-center gap-2">
 					<button
 						type="button"
 						class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
@@ -245,17 +269,6 @@
 					</button>
 				</div>
 			</div>
-
-			{#if collection.customFields.length > 0}
-				<dl class="mt-4 grid gap-x-6 gap-y-2 sm:grid-cols-2">
-					{#each collection.customFields as field (field.label + field.value)}
-						<div class="flex justify-between gap-3 border-b border-slate-100 py-1 text-sm dark:border-slate-800">
-							<dt class="text-slate-500">{field.label}</dt>
-							<dd class="font-medium">{field.value}</dd>
-						</div>
-					{/each}
-				</dl>
-			{/if}
 
 			{#if stats}
 				<div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -277,6 +290,21 @@
 			{/if}
 		</div>
 
+		<!-- Details (custom fields) -->
+		{#if collection.customFields.length > 0}
+			<div class="rounded-lg border border-slate-200 p-5 dark:border-slate-800">
+				<h2 class="mb-3 text-lg font-semibold">Details</h2>
+				<dl class="grid gap-x-6 gap-y-2 sm:grid-cols-2">
+					{#each collection.customFields as field (field.label + field.value)}
+						<div class="flex justify-between gap-3 border-b border-slate-100 py-1 text-sm dark:border-slate-800">
+							<dt class="text-slate-500">{field.label}</dt>
+							<dd class="font-medium">{field.value}</dd>
+						</div>
+					{/each}
+				</dl>
+			</div>
+		{/if}
+
 		<!-- Map -->
 		{#if mapMarkers.length > 0}
 			<div>
@@ -288,13 +316,41 @@
 		<!-- Items -->
 		<div class="flex items-center justify-between">
 			<h2 class="text-lg font-semibold">Items</h2>
-			<button
-				type="button"
-				class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
-				onclick={openCreateItem}
-			>
-				<Icon name="plus" class="h-4 w-4" /> Add item
-			</button>
+			<div class="flex items-center gap-2">
+				<div class="inline-flex rounded-md border border-slate-300 p-0.5 dark:border-slate-700">
+					<button
+						type="button"
+						class="rounded p-1.5"
+						class:bg-slate-200={itemsView === 'card'}
+						class:dark:bg-slate-700={itemsView === 'card'}
+						class:text-slate-500={itemsView !== 'card'}
+						title="Card view"
+						aria-label="Card view"
+						onclick={() => setItemsView('card')}
+					>
+						<Icon name="grid" class="h-4 w-4" />
+					</button>
+					<button
+						type="button"
+						class="rounded p-1.5"
+						class:bg-slate-200={itemsView === 'list'}
+						class:dark:bg-slate-700={itemsView === 'list'}
+						class:text-slate-500={itemsView !== 'list'}
+						title="List view"
+						aria-label="List view"
+						onclick={() => setItemsView('list')}
+					>
+						<Icon name="list" class="h-4 w-4" />
+					</button>
+				</div>
+				<button
+					type="button"
+					class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+					onclick={openCreateItem}
+				>
+					<Icon name="plus" class="h-4 w-4" /> Add item
+				</button>
+			</div>
 		</div>
 
 		{#if items.length === 0}
@@ -303,6 +359,35 @@
 			>
 				No items in this collection yet.
 			</p>
+		{:else if itemsView === 'list'}
+			<ul class="divide-y divide-slate-200 overflow-hidden rounded-lg border border-slate-200 dark:divide-slate-800 dark:border-slate-800">
+				{#each items as item (item.id)}
+					<li>
+						<a
+							href={`/items/${item.id}`}
+							class="flex items-center gap-3 px-4 py-3 transition hover:bg-slate-50 dark:hover:bg-slate-800/60"
+						>
+							<span class="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-slate-100 text-slate-400 dark:bg-slate-800">
+								{#if item.imagePath}
+									<img src={item.imagePath} alt={item.name} class="h-full w-full object-cover" />
+								{:else}
+									<Icon name="cube" class="h-5 w-5" />
+								{/if}
+							</span>
+							<div class="min-w-0 flex-1">
+								<div class="truncate font-medium">{item.name}</div>
+								{#if item.description}
+									<p class="truncate text-sm text-slate-500">{item.description}</p>
+								{/if}
+							</div>
+							{#if item.locationLat != null && item.locationLng != null}
+								<Icon name="map-pin" class="h-3.5 w-3.5 shrink-0 text-slate-400" />
+							{/if}
+							<span class="shrink-0 text-xs text-slate-500">{item.entryCount} entries</span>
+						</a>
+					</li>
+				{/each}
+			</ul>
 		{:else}
 			<ul class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
 				{#each items as item (item.id)}
@@ -464,26 +549,13 @@
 </Modal>
 
 <!-- Delete confirm modal -->
-<Modal title="Delete collection" bind:open={deleteModal}>
-	<p class="text-sm text-slate-600 dark:text-slate-400">
-		Are you sure you want to delete <strong>{collection?.name}</strong>? This will remove all items
-		and entries in it. This action cannot be undone.
-	</p>
-	{#snippet footer()}
-		<button
-			type="button"
-			class="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
-			onclick={() => (deleteModal = false)}
-		>
-			Cancel
-		</button>
-		<button
-			type="button"
-			class="rounded-md bg-rose-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-60"
-			onclick={confirmDelete}
-			disabled={deleting}
-		>
-			{deleting ? 'Deleting…' : 'Delete'}
-		</button>
-	{/snippet}
-</Modal>
+{#if collection}
+	<ConfirmDeleteModal
+		bind:open={deleteModal}
+		name={collection.name}
+		title="Delete collection"
+		message="This will remove all items and entries in it. This action cannot be undone."
+		{deleting}
+		onconfirm={confirmDelete}
+	/>
+{/if}

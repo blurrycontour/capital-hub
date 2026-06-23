@@ -1,4 +1,4 @@
-# Capital-Hub
+# Capital Hub
 
 Self-hosted, multi-user asset management for tracking items (land, apartments,
 houses, vehicles, etc.) along with their transactions, maintenance, paperwork,

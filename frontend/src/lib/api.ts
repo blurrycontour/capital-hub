@@ -201,6 +201,7 @@ export type Item = {
 	name: string;
 	description: string;
 	imagePath: string;
+	images: string[];
 	locationLat: number | null;
 	locationLng: number | null;
 	locationLabel: string;
@@ -259,6 +260,7 @@ export type SearchResult = {
 export type ItemInput = {
 	name: string;
 	description: string;
+	images: string[];
 	locationLat: number | null;
 	locationLng: number | null;
 	locationLabel: string;
@@ -385,6 +387,11 @@ export async function uploadItemImage(id: number, file: File): Promise<Item> {
 		body: form
 	});
 	const body = await parseJSON<{ item: Item }>(res);
+	return body.item;
+}
+
+export async function deleteItemImage(id: number, path: string): Promise<Item> {
+	const body = await mutate<{ item: Item }>(`/api/v1/items/${id}/image`, 'DELETE', { path });
 	return body.item;
 }
 

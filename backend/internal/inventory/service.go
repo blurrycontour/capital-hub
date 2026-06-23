@@ -48,6 +48,31 @@ func marshalJSONField(v any) string {
 	return string(b)
 }
 
+// unmarshalStringList decodes a JSON array of strings, returning an empty slice
+// on any error so callers never get nil.
+func unmarshalStringList(s string) []string {
+	out := []string{}
+	if strings.TrimSpace(s) == "" {
+		return out
+	}
+	_ = json.Unmarshal([]byte(s), &out)
+	if out == nil {
+		return []string{}
+	}
+	return out
+}
+
+// normalizeStringList trims entries and drops empties.
+func normalizeStringList(v []string) []string {
+	out := make([]string, 0, len(v))
+	for _, s := range v {
+		if s = strings.TrimSpace(s); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 func unmarshalCustomFields(s string) []CustomField {
 	out := []CustomField{}
 	if strings.TrimSpace(s) == "" {
@@ -123,6 +148,7 @@ type Item struct {
 	Name          string        `json:"name"`
 	Description   string        `json:"description"`
 	ImagePath     string        `json:"imagePath"`
+	Images        []string      `json:"images"`
 	LocationLat   *float64      `json:"locationLat"`
 	LocationLng   *float64      `json:"locationLng"`
 	LocationLabel string        `json:"locationLabel"`
@@ -306,7 +332,7 @@ func (s *Service) DeleteCollection(ctx context.Context, userID, id int64) error 
 // ---------- Items ----------
 
 const itemSelect = `
-SELECT i.id, i.collection_id, i.name, i.description, i.image_path,
+SELECT i.id, i.collection_id, i.name, i.description, i.image_path, i.images,
        i.location_lat, i.location_lng, i.location_label, i.attachments, i.custom_fields,
        i.created_at, i.updated_at,
        COALESCE(cu.display_name, cu.username, ''),
@@ -320,12 +346,13 @@ LEFT JOIN users uu ON uu.id = i.updated_by
 
 func scanItem(s interface{ Scan(...any) error }) (Item, error) {
 	var it Item
-	var attachments, customFields string
-	if err := s.Scan(&it.ID, &it.CollectionID, &it.Name, &it.Description, &it.ImagePath,
+	var images, attachments, customFields string
+	if err := s.Scan(&it.ID, &it.CollectionID, &it.Name, &it.Description, &it.ImagePath, &images,
 		&it.LocationLat, &it.LocationLng, &it.LocationLabel, &attachments, &customFields,
 		&it.CreatedAt, &it.UpdatedAt, &it.CreatedBy, &it.UpdatedBy, &it.EntryCount); err != nil {
 		return Item{}, err
 	}
+	it.Images = unmarshalStringList(images)
 	it.Attachments = unmarshalAttachments(attachments)
 	it.CustomFields = unmarshalCustomFields(customFields)
 	return it, nil
@@ -373,6 +400,7 @@ func (s *Service) GetItem(ctx context.Context, userID, id int64) (*Item, error) 
 type ItemInput struct {
 	Name          string
 	Description   string
+	Images        []string
 	LocationLat   *float64
 	LocationLng   *float64
 	LocationLabel string
@@ -389,10 +417,15 @@ func (s *Service) CreateItem(ctx context.Context, userID, collectionID int64, in
 	if name == "" {
 		return nil, errors.New("name is required")
 	}
+	images := normalizeStringList(in.Images)
+	imagePath := ""
+	if len(images) > 0 {
+		imagePath = images[0]
+	}
 	res, err := s.db.ExecContext(ctx,
-		`INSERT INTO items (collection_id, name, description, location_lat, location_lng, location_label, attachments, custom_fields, created_by, updated_by)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		collectionID, name, strings.TrimSpace(in.Description), in.LocationLat, in.LocationLng, strings.TrimSpace(in.LocationLabel),
+		`INSERT INTO items (collection_id, name, description, image_path, images, location_lat, location_lng, location_label, attachments, custom_fields, created_by, updated_by)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		collectionID, name, strings.TrimSpace(in.Description), imagePath, marshalJSONField(images), in.LocationLat, in.LocationLng, strings.TrimSpace(in.LocationLabel),
 		marshalJSONField(normalizeAttachments(in.Attachments)), marshalJSONField(normalizeCustomFields(in.CustomFields)), userID, userID,
 	)
 	if err != nil {
@@ -411,10 +444,15 @@ func (s *Service) UpdateItem(ctx context.Context, userID, id int64, in ItemInput
 	if name == "" {
 		return nil, errors.New("name is required")
 	}
+	images := normalizeStringList(in.Images)
+	imagePath := ""
+	if len(images) > 0 {
+		imagePath = images[0]
+	}
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE items SET name = ?, description = ?, location_lat = ?, location_lng = ?, location_label = ?,
+		`UPDATE items SET name = ?, description = ?, image_path = ?, images = ?, location_lat = ?, location_lng = ?, location_label = ?,
 		 attachments = ?, custom_fields = ?, updated_at = datetime('now'), updated_by = ? WHERE id = ?`,
-		name, strings.TrimSpace(in.Description), in.LocationLat, in.LocationLng, strings.TrimSpace(in.LocationLabel),
+		name, strings.TrimSpace(in.Description), imagePath, marshalJSONField(images), in.LocationLat, in.LocationLng, strings.TrimSpace(in.LocationLabel),
 		marshalJSONField(normalizeAttachments(in.Attachments)), marshalJSONField(normalizeCustomFields(in.CustomFields)), userID, id,
 	)
 	if err != nil {
@@ -441,21 +479,50 @@ func (s *Service) AddItemAttachment(ctx context.Context, userID, id int64, att A
 	return s.GetItem(ctx, userID, id)
 }
 
-// SetItemImage stores the relative image path for an owned item and returns the
-// previous path (so callers can clean up the old file).
-func (s *Service) SetItemImage(ctx context.Context, userID, id int64, imagePath string) (string, error) {
-	current, err := s.GetItem(ctx, userID, id)
+// AddItemImage appends an uploaded image to an owned item. The first image
+// also becomes the cover (image_path) used for thumbnails.
+func (s *Service) AddItemImage(ctx context.Context, userID, id int64, imagePath string) (*Item, error) {
+	item, err := s.GetItem(ctx, userID, id)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
+	next := append(item.Images, imagePath)
+	cover := next[0]
 	_, err = s.db.ExecContext(ctx,
-		`UPDATE items SET image_path = ?, updated_at = datetime('now'), updated_by = ? WHERE id = ?`,
-		imagePath, userID, id,
+		`UPDATE items SET image_path = ?, images = ?, updated_at = datetime('now'), updated_by = ? WHERE id = ?`,
+		cover, marshalJSONField(normalizeStringList(next)), userID, id,
 	)
 	if err != nil {
-		return "", fmt.Errorf("set item image: %w", err)
+		return nil, fmt.Errorf("add item image: %w", err)
 	}
-	return current.ImagePath, nil
+	return s.GetItem(ctx, userID, id)
+}
+
+// RemoveItemImage removes an image from an owned item and returns the refreshed
+// record. The cover is updated to the first remaining image (or cleared).
+func (s *Service) RemoveItemImage(ctx context.Context, userID, id int64, imagePath string) (*Item, error) {
+	item, err := s.GetItem(ctx, userID, id)
+	if err != nil {
+		return nil, err
+	}
+	next := make([]string, 0, len(item.Images))
+	for _, p := range item.Images {
+		if p != imagePath {
+			next = append(next, p)
+		}
+	}
+	cover := ""
+	if len(next) > 0 {
+		cover = next[0]
+	}
+	_, err = s.db.ExecContext(ctx,
+		`UPDATE items SET image_path = ?, images = ?, updated_at = datetime('now'), updated_by = ? WHERE id = ?`,
+		cover, marshalJSONField(next), userID, id,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("remove item image: %w", err)
+	}
+	return s.GetItem(ctx, userID, id)
 }
 
 // DeleteItem removes an owned item and cascades to its entries.

@@ -145,7 +145,7 @@
 
 	<div
 		bind:this={mapEl}
-		class="h-64 w-full rounded-md border border-slate-200 dark:border-slate-800"
+		class="isolate h-64 w-full rounded-md border border-slate-200 dark:border-slate-800"
 	></div>
 
 	<div class="grid grid-cols-2 gap-2">

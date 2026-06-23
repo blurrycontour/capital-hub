@@ -40,8 +40,13 @@
 	});
 
 	const breadcrumbs = $derived.by(() => {
-		const path = $page.url.pathname;
 		const crumbs: { label: string; href: string }[] = [{ label: 'Home', href: '/' }];
+		// A page may register a full custom trail (e.g. an item nested under its
+		// collection) that doesn't match the URL structure.
+		if (crumbStore.trail) {
+			return [...crumbs, ...crumbStore.trail];
+		}
+		const path = $page.url.pathname;
 		let acc = '';
 		for (const seg of path.split('/').filter(Boolean)) {
 			acc += `/${seg}`;

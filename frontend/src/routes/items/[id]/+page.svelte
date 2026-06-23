@@ -129,12 +129,24 @@
 			listEntries(itemId),
 			getItemStats(itemId)
 		]);
-		breadcrumbs.set(`/items/${itemId}`, item.name);
 		try {
 			collection = await getCollection(item.collectionId);
 		} catch {
 			collection = null;
 		}
+		updateTrail();
+	}
+
+	// Nest the item under its collection: Collections > <collection> > Items > <item>.
+	function updateTrail() {
+		if (!item) return;
+		const collectionId = item.collectionId;
+		breadcrumbs.setTrail([
+			{ label: 'Collections', href: '/collections' },
+			{ label: collection?.name ?? 'Collection', href: `/collections/${collectionId}` },
+			{ label: 'Items', href: `/collections/${collectionId}` },
+			{ label: item.name, href: `/items/${itemId}` }
+		]);
 	}
 
 	onMount(async () => {
@@ -147,7 +159,7 @@
 		}
 	});
 
-	onDestroy(() => breadcrumbs.clear(`/items/${itemId}`));
+	onDestroy(() => breadcrumbs.clearTrail());
 
 	function openEdit() {
 		if (!item) return;
@@ -175,7 +187,7 @@
 				attachments: item.attachments,
 				customFields: eFields.filter((f) => f.label.trim() || f.value.trim())
 			});
-			breadcrumbs.set(`/items/${item.id}`, item.name);
+			updateTrail();
 			editModal = false;
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to save item';

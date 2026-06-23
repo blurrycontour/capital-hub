@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -78,26 +79,19 @@ func (s *Service) Login(ctx context.Context, identifier, password, userAgent, re
 		return nil, "", time.Time{}, errors.New("invalid credentials")
 	}
 
-	sessionID, err := randomToken(32)
+	sessionID, expiresAt, err := s.createSession(ctx, user.ID, userAgent, remoteAddr)
 	if err != nil {
-		return nil, "", time.Time{}, fmt.Errorf("generate session id: %w", err)
+		return nil, "", time.Time{}, err
 	}
-
-	expiresAt := time.Now().UTC().Add(time.Duration(s.cfg.SessionTTLHours) * time.Hour)
-	if _, err := s.db.ExecContext(
-		ctx,
-		`INSERT INTO sessions (id, user_id, user_agent, ip, expires_at)
-		 VALUES (?, ?, ?, ?, ?)`,
-		sessionID,
-		user.ID,
-		truncate(userAgent, 512),
-		truncate(clientIP(remoteAddr), 128),
-		sqliteTime(expiresAt),
-	); err != nil {
-		return nil, "", time.Time{}, fmt.Errorf("create session: %w", err)
-	}
-
 	return &user, sessionID, expiresAt, nil
+}
+
+// LoginByUserID creates a fresh session for a known user (used by OIDC flow).
+func (s *Service) LoginByUserID(ctx context.Context, userID int64, userAgent, remoteAddr string) (string, time.Time, error) {
+	if userID == 0 {
+		return "", time.Time{}, errors.New("user id is required")
+	}
+	return s.createSession(ctx, userID, userAgent, remoteAddr)
 }
 
 // Logout removes a session from the server-side store.
@@ -172,6 +166,94 @@ func (s *Service) ListUsers(ctx context.Context) ([]User, error) {
 	return users, nil
 }
 
+// ResolveOrCreateOIDCUser finds or creates a user for an OIDC identity and
+// links the identity to that user.
+func (s *Service) ResolveOrCreateOIDCUser(
+	ctx context.Context,
+	provider,
+	subject,
+	email,
+	preferredUsername,
+	displayName string,
+	makeAdmin bool,
+) (*User, error) {
+	provider = strings.TrimSpace(provider)
+	subject = strings.TrimSpace(subject)
+	email = strings.TrimSpace(strings.ToLower(email))
+	preferredUsername = strings.TrimSpace(preferredUsername)
+	displayName = strings.TrimSpace(displayName)
+
+	if provider == "" || subject == "" {
+		return nil, errors.New("provider and subject are required")
+	}
+
+	var user User
+	var isAdmin int
+	var isActive int
+	err := s.db.QueryRowContext(
+		ctx,
+		`SELECT u.id, u.username, u.email, u.display_name, u.is_admin, u.is_active
+		 FROM oidc_identities oi
+		 JOIN users u ON u.id = oi.user_id
+		 WHERE oi.provider = ? AND oi.subject = ?
+		 LIMIT 1`,
+		provider,
+		subject,
+	).Scan(&user.ID, &user.Username, &user.Email, &user.DisplayName, &isAdmin, &isActive)
+	if err == nil {
+		user.IsAdmin = isAdmin == 1 || makeAdmin
+		user.IsActive = isActive == 1
+		if makeAdmin && !user.IsAdmin {
+			if _, err := s.db.ExecContext(ctx, `UPDATE users SET is_admin = 1, updated_at = datetime('now') WHERE id = ?`, user.ID); err != nil {
+				return nil, fmt.Errorf("promote oidc user to admin: %w", err)
+			}
+			user.IsAdmin = true
+		}
+		if !user.IsActive {
+			return nil, errors.New("user is inactive")
+		}
+		return &user, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("lookup oidc identity: %w", err)
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin oidc transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	userID, userEmail, userName, userDisplayName, err := s.findOrCreateOIDCUserTx(ctx, tx, email, preferredUsername, displayName, makeAdmin)
+	if err != nil {
+		return nil, err
+	}
+
+	if _, err := tx.ExecContext(
+		ctx,
+		`INSERT INTO oidc_identities (user_id, provider, subject)
+		 VALUES (?, ?, ?)`,
+		userID,
+		provider,
+		subject,
+	); err != nil {
+		return nil, fmt.Errorf("insert oidc identity: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit oidc transaction: %w", err)
+	}
+
+	return &User{
+		ID:          userID,
+		Username:    userName,
+		Email:       userEmail,
+		DisplayName: userDisplayName,
+		IsAdmin:     makeAdmin,
+		IsActive:    true,
+	}, nil
+}
+
 // EnsureBootstrapAdmin creates an initial admin user if configured and missing.
 func (s *Service) EnsureBootstrapAdmin(ctx context.Context) error {
 	username := strings.TrimSpace(s.cfg.BootstrapAdminUsername)
@@ -213,6 +295,165 @@ func (s *Service) EnsureBootstrapAdmin(ctx context.Context) error {
 		return fmt.Errorf("insert bootstrap admin: %w", err)
 	}
 	return nil
+}
+
+func (s *Service) createSession(ctx context.Context, userID int64, userAgent, remoteAddr string) (string, time.Time, error) {
+	sessionID, err := randomToken(32)
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("generate session id: %w", err)
+	}
+
+	expiresAt := time.Now().UTC().Add(time.Duration(s.cfg.SessionTTLHours) * time.Hour)
+	if _, err := s.db.ExecContext(
+		ctx,
+		`INSERT INTO sessions (id, user_id, user_agent, ip, expires_at)
+		 VALUES (?, ?, ?, ?, ?)`,
+		sessionID,
+		userID,
+		truncate(userAgent, 512),
+		truncate(clientIP(remoteAddr), 128),
+		sqliteTime(expiresAt),
+	); err != nil {
+		return "", time.Time{}, fmt.Errorf("create session: %w", err)
+	}
+	return sessionID, expiresAt, nil
+}
+
+func (s *Service) findOrCreateOIDCUserTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	email,
+	preferredUsername,
+	displayName string,
+	makeAdmin bool,
+) (int64, string, string, string, error) {
+	if email != "" {
+		var existingID int64
+		var existingUsername string
+		var existingDisplayName string
+		var isAdmin int
+		err := tx.QueryRowContext(
+			ctx,
+			`SELECT id, username, display_name, is_admin FROM users WHERE email = ? LIMIT 1`,
+			email,
+		).Scan(&existingID, &existingUsername, &existingDisplayName, &isAdmin)
+		if err == nil {
+			if makeAdmin && isAdmin != 1 {
+				if _, err := tx.ExecContext(ctx, `UPDATE users SET is_admin = 1, updated_at = datetime('now') WHERE id = ?`, existingID); err != nil {
+					return 0, "", "", "", fmt.Errorf("promote existing user to admin: %w", err)
+				}
+			}
+			if existingDisplayName == "" && displayName != "" {
+				if _, err := tx.ExecContext(ctx, `UPDATE users SET display_name = ?, updated_at = datetime('now') WHERE id = ?`, displayName, existingID); err != nil {
+					return 0, "", "", "", fmt.Errorf("update display name: %w", err)
+				}
+				existingDisplayName = displayName
+			}
+			return existingID, email, existingUsername, existingDisplayName, nil
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return 0, "", "", "", fmt.Errorf("lookup user by email: %w", err)
+		}
+	}
+
+	usernameBase := normalizeUsername(preferredUsername)
+	if usernameBase == "" {
+		if email != "" {
+			usernameBase = normalizeUsername(strings.SplitN(email, "@", 2)[0])
+		}
+	}
+	if usernameBase == "" {
+		usernameBase = "user"
+	}
+	username, err := uniqueUsernameTx(ctx, tx, usernameBase)
+	if err != nil {
+		return 0, "", "", "", err
+	}
+
+	userEmail := email
+	if userEmail == "" {
+		userEmail, err = uniqueGeneratedEmailTx(ctx, tx, username)
+		if err != nil {
+			return 0, "", "", "", err
+		}
+	}
+
+	if displayName == "" {
+		displayName = username
+	}
+
+	adminInt := 0
+	if makeAdmin {
+		adminInt = 1
+	}
+
+	res, err := tx.ExecContext(
+		ctx,
+		`INSERT INTO users (username, email, display_name, is_admin, is_active)
+		 VALUES (?, ?, ?, ?, 1)`,
+		username,
+		userEmail,
+		displayName,
+		adminInt,
+	)
+	if err != nil {
+		return 0, "", "", "", fmt.Errorf("insert oidc user: %w", err)
+	}
+	userID, err := res.LastInsertId()
+	if err != nil {
+		return 0, "", "", "", fmt.Errorf("fetch oidc user id: %w", err)
+	}
+
+	return userID, userEmail, username, displayName, nil
+}
+
+var usernameSanitizer = regexp.MustCompile(`[^a-z0-9._-]+`)
+
+func normalizeUsername(v string) string {
+	v = strings.ToLower(strings.TrimSpace(v))
+	v = usernameSanitizer.ReplaceAllString(v, "")
+	v = strings.Trim(v, "._-")
+	if len(v) > 32 {
+		v = v[:32]
+	}
+	return v
+}
+
+func uniqueUsernameTx(ctx context.Context, tx *sql.Tx, base string) (string, error) {
+	for i := 0; i < 1000; i++ {
+		candidate := base
+		if i > 0 {
+			candidate = fmt.Sprintf("%s%d", base, i+1)
+		}
+		var exists int
+		err := tx.QueryRowContext(ctx, `SELECT 1 FROM users WHERE username = ? LIMIT 1`, candidate).Scan(&exists)
+		if errors.Is(err, sql.ErrNoRows) {
+			return candidate, nil
+		}
+		if err != nil {
+			return "", fmt.Errorf("check username uniqueness: %w", err)
+		}
+	}
+	return "", errors.New("failed to allocate unique username")
+}
+
+func uniqueGeneratedEmailTx(ctx context.Context, tx *sql.Tx, username string) (string, error) {
+	for i := 0; i < 1000; i++ {
+		local := username
+		if i > 0 {
+			local = fmt.Sprintf("%s%d", username, i+1)
+		}
+		candidate := fmt.Sprintf("%s@oidc.local", local)
+		var exists int
+		err := tx.QueryRowContext(ctx, `SELECT 1 FROM users WHERE email = ? LIMIT 1`, candidate).Scan(&exists)
+		if errors.Is(err, sql.ErrNoRows) {
+			return candidate, nil
+		}
+		if err != nil {
+			return "", fmt.Errorf("check email uniqueness: %w", err)
+		}
+	}
+	return "", errors.New("failed to allocate generated email")
 }
 
 // SessionCookie returns a secure cookie configured for the current environment.

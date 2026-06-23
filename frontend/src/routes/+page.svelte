@@ -1,15 +1,24 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { fetchMe, listNotifications, type ApiUser, type NotificationItem } from '$lib/api';
 
 	let status = $state<'loading' | string>('loading');
+	let user = $state<ApiUser | null>(null);
+	let notifications = $state<NotificationItem[]>([]);
+	let error = $state('');
 
 	onMount(async () => {
 		try {
 			const res = await fetch('/api/v1/health');
 			const data = await res.json();
 			status = data.status ?? 'unknown';
+			user = await fetchMe();
+			if (user) {
+				notifications = await listNotifications(5);
+			}
 		} catch {
 			status = 'unreachable';
+			error = 'Failed to load dashboard data';
 		}
 	});
 </script>
@@ -31,4 +40,28 @@
 			{status}
 		</span>
 	</div>
+
+	{#if error}
+		<div class="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-amber-800 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
+			{error}
+		</div>
+	{/if}
+
+	{#if user}
+		<div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+			<div class="mb-2 text-sm font-medium">Signed in as {user.displayName || user.username}</div>
+			<div class="text-sm text-slate-600 dark:text-slate-400">Recent notifications: {notifications.length}</div>
+			<div class="mt-3 flex flex-wrap gap-2">
+				<a href="/notifications" class="rounded-md border border-slate-300 px-3 py-1 text-sm hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800">Open notifications</a>
+				{#if user.isAdmin}
+					<a href="/admin/settings" class="rounded-md border border-slate-300 px-3 py-1 text-sm hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800">Admin settings</a>
+				{/if}
+			</div>
+		</div>
+	{:else}
+		<div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+			<div class="mb-2 text-sm">You are not logged in.</div>
+			<a href="/login" class="rounded-md border border-slate-300 px-3 py-1 text-sm hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800">Go to login</a>
+		</div>
+	{/if}
 </section>

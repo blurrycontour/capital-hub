@@ -29,35 +29,9 @@ services:
       CH_OIDC_ADMIN_GROUP: ${CH_OIDC_ADMIN_GROUP:-}
     volumes:
       - ch-data:/data
-    # Exposed only to the reverse proxy network by default. Uncomment to test
-    # directly without Caddy.
-    # ports:
-    #   - "8080:8080"
-    networks:
-      - web
-
-  caddy:
-    image: caddy:2-alpine
-    container_name: capital-hub-caddy
-    restart: unless-stopped
-    depends_on:
-      - capital-hub
     ports:
-      - "80:80"
-      - "443:443"
-    environment:
-      CH_DOMAIN: ${CH_DOMAIN:-localhost}
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data
-      - caddy-config:/config
-    networks:
-      - web
+      - 8080:8080
+
 
 volumes:
   ch-data:
-  caddy-data:
-  caddy-config:
-
-networks:
-  web:

@@ -17,6 +17,7 @@ import (
 
 	"github.com/aditya/capital-hub/internal/auth"
 	"github.com/aditya/capital-hub/internal/config"
+	"github.com/aditya/capital-hub/internal/notify"
 	"github.com/aditya/capital-hub/internal/web"
 )
 
@@ -26,12 +27,13 @@ type Server struct {
 	db     *sql.DB
 	logger *slog.Logger
 	auth   *auth.Service
+	notify *notify.Service
 	router chi.Router
 }
 
 // New constructs a Server and builds its route tree.
 func New(cfg *config.Config, db *sql.DB, logger *slog.Logger) (*Server, error) {
-	s := &Server{cfg: cfg, db: db, logger: logger, auth: auth.NewService(db, cfg)}
+	s := &Server{cfg: cfg, db: db, logger: logger, auth: auth.NewService(db, cfg), notify: notify.NewService(db)}
 	if err := s.routes(); err != nil {
 		return nil, err
 	}
@@ -58,10 +60,19 @@ func (s *Server) routes() error {
 
 		api.Route("/auth", func(authRouter chi.Router) {
 			authRouter.Get("/csrf", s.handleCSRFToken)
+			authRouter.Get("/providers", s.handleAuthProviders)
 			authRouter.Post("/login", s.handleLogin)
+			authRouter.Get("/oidc/login", s.handleOIDCLogin)
+			authRouter.Get("/oidc/callback", s.handleOIDCCallback)
 
 			authRouter.With(s.requireAuth, s.requireCSRF).Post("/logout", s.handleLogout)
 			authRouter.With(s.requireAuth).Get("/me", s.handleMe)
+		})
+
+		api.Route("/notifications", func(n chi.Router) {
+			n.Use(s.requireAuth)
+			n.Get("/", s.handleListNotifications)
+			n.With(s.requireCSRF).Post("/{id}/read", s.handleMarkNotificationRead)
 		})
 
 		api.Route("/admin", func(admin chi.Router) {

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { listNotifications, type NotificationItem } from '$lib/api';
+	import { listNotifications, getPortfolioStats, formatCurrency, type NotificationItem } from '$lib/api';
 	import { auth } from '$lib/auth.svelte';
 	import Icon, { type IconName } from '$lib/Icon.svelte';
 
@@ -10,9 +10,15 @@
 	let notifications = $state<NotificationItem[]>([]);
 	let error = $state('');
 
-	// Portfolio summary. Real collection/asset data is not wired up yet, so these
-	// default to zero until the backend exposes the relevant endpoints.
-	const summary = $state({ collections: 0, items: 0, totalValue: 0 });
+	// Portfolio summary loaded from the backend.
+	const summary = $state({ collections: 0, items: 0, entries: 0 });
+	let totals = $state<{ currency: string; total: number }[]>([]);
+
+	const valueLabel = $derived(
+		totals.length === 0
+			? formatCurrency(0, 'USD')
+			: totals.map((t) => formatCurrency(t.total, t.currency)).join(' · ')
+	);
 
 	const cards: { label: string; icon: IconName; value: string }[] = $derived([
 		{ label: 'Collections', icon: 'collections', value: String(summary.collections) },
@@ -20,11 +26,7 @@
 		{
 			label: 'Total value',
 			icon: 'currency',
-			value: new Intl.NumberFormat(undefined, {
-				style: 'currency',
-				currency: 'USD',
-				maximumFractionDigits: 0
-			}).format(summary.totalValue)
+			value: valueLabel
 		}
 	]);
 
@@ -34,7 +36,15 @@
 			const data = await res.json();
 			status = data.status ?? 'unknown';
 			if (auth.user) {
-				notifications = await listNotifications(5);
+				const [notes, portfolio] = await Promise.all([
+					listNotifications(5),
+					getPortfolioStats()
+				]);
+				notifications = notes;
+				summary.collections = portfolio.collectionCount;
+				summary.items = portfolio.itemCount;
+				summary.entries = portfolio.entryCount;
+				totals = portfolio.totals;
 			}
 		} catch {
 			status = 'unreachable';

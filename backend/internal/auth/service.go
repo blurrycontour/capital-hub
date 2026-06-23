@@ -492,14 +492,16 @@ func uniqueGeneratedEmailTx(ctx context.Context, tx *sql.Tx, username string) (s
 	return "", errors.New("failed to allocate generated email")
 }
 
-// SessionCookie returns a secure cookie configured for the current environment.
-func (s *Service) SessionCookie(sessionID string, expiresAt time.Time) *http.Cookie {
+// SessionCookie returns a session cookie. The secure flag should reflect
+// whether the request arrived over HTTPS so the cookie is stored both for
+// plain-HTTP deployments and HTTPS deployments behind a TLS proxy.
+func (s *Service) SessionCookie(sessionID string, expiresAt time.Time, secure bool) *http.Cookie {
 	return &http.Cookie{
 		Name:     s.cfg.SessionCookieName,
 		Value:    sessionID,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   !s.cfg.IsDev(),
+		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 		Expires:  expiresAt,
 		MaxAge:   int(time.Until(expiresAt).Seconds()),
@@ -507,13 +509,13 @@ func (s *Service) SessionCookie(sessionID string, expiresAt time.Time) *http.Coo
 }
 
 // ClearSessionCookie expires the session cookie.
-func (s *Service) ClearSessionCookie() *http.Cookie {
+func (s *Service) ClearSessionCookie(secure bool) *http.Cookie {
 	return &http.Cookie{
 		Name:     s.cfg.SessionCookieName,
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   !s.cfg.IsDev(),
+		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 		Expires:  time.Unix(0, 0),
 		MaxAge:   -1,

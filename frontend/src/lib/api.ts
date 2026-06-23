@@ -152,3 +152,251 @@ export async function testSMTP(to: string): Promise<void> {
 	});
 	await parseJSON<{ ok: boolean }>(res);
 }
+
+// ---------- Inventory: collections, items, entries ----------
+
+export type Collection = {
+	id: number;
+	name: string;
+	description: string;
+	createdAt: string;
+	updatedAt: string;
+	createdBy: string;
+	updatedBy: string;
+	itemCount: number;
+};
+
+export type Item = {
+	id: number;
+	collectionId: number;
+	name: string;
+	description: string;
+	imagePath: string;
+	locationLat: number | null;
+	locationLng: number | null;
+	locationLabel: string;
+	createdAt: string;
+	updatedAt: string;
+	createdBy: string;
+	updatedBy: string;
+	entryCount: number;
+};
+
+export type Entry = {
+	id: number;
+	itemId: number;
+	kind: string;
+	amount: number;
+	currency: string;
+	quantity: number;
+	note: string;
+	occurredOn: string;
+	createdAt: string;
+	updatedAt: string;
+	createdBy: string;
+	updatedBy: string;
+};
+
+export type CurrencyTotal = {
+	currency: string;
+	total: number;
+	entries: number;
+};
+
+export type Stats = {
+	itemCount: number;
+	entryCount: number;
+	totals: CurrencyTotal[];
+};
+
+export type PortfolioSummary = {
+	collectionCount: number;
+	itemCount: number;
+	entryCount: number;
+	totals: CurrencyTotal[];
+};
+
+export type SearchResult = {
+	type: 'collection' | 'item';
+	id: number;
+	name: string;
+	description: string;
+	collectionId: number;
+	collectionName: string;
+};
+
+export type ItemInput = {
+	name: string;
+	description: string;
+	locationLat: number | null;
+	locationLng: number | null;
+	locationLabel: string;
+};
+
+export type EntryInput = {
+	kind: string;
+	amount: number;
+	currency: string;
+	quantity: number;
+	note: string;
+	occurredOn: string;
+};
+
+async function mutate<T>(url: string, method: string, payload?: unknown): Promise<T> {
+	const csrf = await fetchCSRFToken();
+	const headers: Record<string, string> = { 'X-CSRF-Token': csrf };
+	let body: string | undefined;
+	if (payload !== undefined) {
+		headers['Content-Type'] = 'application/json';
+		body = JSON.stringify(payload);
+	}
+	const res = await fetch(url, { method, headers, body });
+	return parseJSON<T>(res);
+}
+
+// Collections
+
+export async function listCollections(): Promise<Collection[]> {
+	const res = await fetch('/api/v1/collections');
+	const body = await parseJSON<{ collections: Collection[] }>(res);
+	return body.collections;
+}
+
+export async function getCollection(id: number): Promise<Collection> {
+	const res = await fetch(`/api/v1/collections/${id}`);
+	const body = await parseJSON<{ collection: Collection }>(res);
+	return body.collection;
+}
+
+export async function createCollection(payload: {
+	name: string;
+	description: string;
+}): Promise<Collection> {
+	const body = await mutate<{ collection: Collection }>('/api/v1/collections', 'POST', payload);
+	return body.collection;
+}
+
+export async function updateCollection(
+	id: number,
+	payload: { name: string; description: string }
+): Promise<Collection> {
+	const body = await mutate<{ collection: Collection }>(
+		`/api/v1/collections/${id}`,
+		'PATCH',
+		payload
+	);
+	return body.collection;
+}
+
+export async function deleteCollection(id: number): Promise<void> {
+	await mutate<{ ok: boolean }>(`/api/v1/collections/${id}`, 'DELETE');
+}
+
+export async function getCollectionStats(id: number): Promise<Stats> {
+	const res = await fetch(`/api/v1/collections/${id}/stats`);
+	const body = await parseJSON<{ stats: Stats }>(res);
+	return body.stats;
+}
+
+// Items
+
+export async function listItems(collectionId: number): Promise<Item[]> {
+	const res = await fetch(`/api/v1/collections/${collectionId}/items`);
+	const body = await parseJSON<{ items: Item[] }>(res);
+	return body.items;
+}
+
+export async function getItem(id: number): Promise<Item> {
+	const res = await fetch(`/api/v1/items/${id}`);
+	const body = await parseJSON<{ item: Item }>(res);
+	return body.item;
+}
+
+export async function createItem(collectionId: number, payload: ItemInput): Promise<Item> {
+	const body = await mutate<{ item: Item }>(
+		`/api/v1/collections/${collectionId}/items`,
+		'POST',
+		payload
+	);
+	return body.item;
+}
+
+export async function updateItem(id: number, payload: ItemInput): Promise<Item> {
+	const body = await mutate<{ item: Item }>(`/api/v1/items/${id}`, 'PATCH', payload);
+	return body.item;
+}
+
+export async function deleteItem(id: number): Promise<void> {
+	await mutate<{ ok: boolean }>(`/api/v1/items/${id}`, 'DELETE');
+}
+
+export async function getItemStats(id: number): Promise<Stats> {
+	const res = await fetch(`/api/v1/items/${id}/stats`);
+	const body = await parseJSON<{ stats: Stats }>(res);
+	return body.stats;
+}
+
+export async function uploadItemImage(id: number, file: File): Promise<Item> {
+	const csrf = await fetchCSRFToken();
+	const form = new FormData();
+	form.append('file', file);
+	const res = await fetch(`/api/v1/items/${id}/image`, {
+		method: 'POST',
+		headers: { 'X-CSRF-Token': csrf },
+		body: form
+	});
+	const body = await parseJSON<{ item: Item }>(res);
+	return body.item;
+}
+
+// Entries
+
+export async function listEntries(itemId: number): Promise<Entry[]> {
+	const res = await fetch(`/api/v1/items/${itemId}/entries`);
+	const body = await parseJSON<{ entries: Entry[] }>(res);
+	return body.entries;
+}
+
+export async function createEntry(itemId: number, payload: EntryInput): Promise<Entry> {
+	const body = await mutate<{ entry: Entry }>(
+		`/api/v1/items/${itemId}/entries`,
+		'POST',
+		payload
+	);
+	return body.entry;
+}
+
+export async function updateEntry(id: number, payload: EntryInput): Promise<Entry> {
+	const body = await mutate<{ entry: Entry }>(`/api/v1/entries/${id}`, 'PATCH', payload);
+	return body.entry;
+}
+
+export async function deleteEntry(id: number): Promise<void> {
+	await mutate<{ ok: boolean }>(`/api/v1/entries/${id}`, 'DELETE');
+}
+
+// Search & portfolio
+
+export async function search(query: string): Promise<SearchResult[]> {
+	const res = await fetch(`/api/v1/search?q=${encodeURIComponent(query)}`);
+	const body = await parseJSON<{ results: SearchResult[] }>(res);
+	return body.results;
+}
+
+export async function getPortfolioStats(): Promise<PortfolioSummary> {
+	const res = await fetch('/api/v1/stats/portfolio');
+	const body = await parseJSON<{ stats: PortfolioSummary }>(res);
+	return body.stats;
+}
+
+// Format a currency total for display.
+export function formatCurrency(amount: number, currency: string): string {
+	try {
+		return new Intl.NumberFormat(undefined, {
+			style: 'currency',
+			currency
+		}).format(amount);
+	} catch {
+		return `${amount.toLocaleString()} ${currency}`;
+	}
+}

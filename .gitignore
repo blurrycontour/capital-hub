@@ -1,5 +1,6 @@
 # misc
 .github/prompts
+ch_data/
 
 # --- Backend (Go) ---
 /backend/bin/

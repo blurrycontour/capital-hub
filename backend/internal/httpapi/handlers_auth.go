@@ -37,8 +37,9 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.SetCookie(w, s.auth.SessionCookie(sessionID, expiresAt))
-	csrf := csrfCookie(s.cfg.IsDev())
+	secure := requestIsSecure(r)
+	http.SetCookie(w, s.auth.SessionCookie(sessionID, expiresAt, secure))
+	csrf := csrfCookie(secure)
 	http.SetCookie(w, csrf)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"user":      user,
@@ -54,8 +55,9 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	http.SetCookie(w, s.auth.ClearSessionCookie())
-	http.SetCookie(w, clearCSRFCookie(s.cfg.IsDev()))
+	secure := requestIsSecure(r)
+	http.SetCookie(w, s.auth.ClearSessionCookie(secure))
+	http.SetCookie(w, clearCSRFCookie(secure))
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -98,7 +100,7 @@ func (s *Server) handleUpdateMe(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleCSRFToken(w http.ResponseWriter, r *http.Request) {
 	c, err := r.Cookie(csrfCookieName)
 	if err != nil || strings.TrimSpace(c.Value) == "" {
-		cookie := csrfCookie(s.cfg.IsDev())
+		cookie := csrfCookie(requestIsSecure(r))
 		http.SetCookie(w, cookie)
 		writeJSON(w, http.StatusOK, map[string]string{"token": cookie.Value})
 		return
@@ -116,7 +118,7 @@ func (s *Server) handleAdminListUsers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"users": users})
 }
 
-func csrfCookie(dev bool) *http.Cookie {
+func csrfCookie(secure bool) *http.Cookie {
 	token, err := randomToken(32)
 	if err != nil {
 		// Keep requests flowing even if entropy source is temporarily unavailable.
@@ -128,24 +130,40 @@ func csrfCookie(dev bool) *http.Cookie {
 		Value:    token,
 		Path:     "/",
 		HttpOnly: false,
-		Secure:   !dev,
+		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 		Expires:  time.Now().UTC().Add(24 * time.Hour),
 		MaxAge:   int((24 * time.Hour).Seconds()),
 	}
 }
 
-func clearCSRFCookie(dev bool) *http.Cookie {
+func clearCSRFCookie(secure bool) *http.Cookie {
 	return &http.Cookie{
 		Name:     csrfCookieName,
 		Value:    "",
 		Path:     "/",
 		HttpOnly: false,
-		Secure:   !dev,
+		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 		Expires:  time.Unix(0, 0),
 		MaxAge:   -1,
 	}
+}
+
+// requestIsSecure reports whether the request reached the server over HTTPS,
+// either directly (r.TLS) or via a TLS-terminating proxy that set
+// X-Forwarded-Proto. The result controls the Secure attribute on cookies so
+// they are stored both for plain-HTTP deployments (e.g. local Docker on
+// http://localhost) and HTTPS deployments behind a reverse proxy.
+func requestIsSecure(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	if proto := r.Header.Get("X-Forwarded-Proto"); proto != "" {
+		first := strings.TrimSpace(strings.Split(proto, ",")[0])
+		return strings.EqualFold(first, "https")
+	}
+	return false
 }
 
 func randomToken(bytesLen int) (string, error) {

@@ -45,7 +45,7 @@ COPY --from=backend /out/capital-hub /usr/local/bin/capital-hub
 
 # Writable data directory owned by the nonroot user (uid 65532). A fresh named
 # or anonymous volume inherits this ownership on first mount.
-COPY --from=backend --chown=65532:65532 /data /data
+COPY --from=backend /data /data
 
 ENV CH_ENV=prod \
     CH_ADDR=:8080 \

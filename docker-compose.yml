@@ -6,6 +6,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    # Run as the host user that owns ./ch_data so the bind mount is writable.
+    user: "1000:1000"
     environment:
       CH_ENV: prod
       CH_ADDR: ":8080"
@@ -28,9 +30,6 @@ services:
       CH_OIDC_REDIRECT_URL: ${CH_OIDC_REDIRECT_URL:-}
       CH_OIDC_ADMIN_GROUP: ${CH_OIDC_ADMIN_GROUP:-}
     volumes:
-      - ch-data:/data
+      - ./ch_data:/data
     ports:
       - 8080:8080
-
-volumes:
-  ch-data:

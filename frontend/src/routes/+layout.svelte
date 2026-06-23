@@ -216,7 +216,7 @@
 						onclick={doLogout}
 						title="Logout"
 						aria-label="Logout"
-						class="flex w-full items-center gap-3 rounded-md px-3 py-2 text-slate-600 hover:bg-slate-100 hover:text-red-600 dark:text-slate-300 dark:hover:bg-slate-800"
+						class="flex w-full cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-slate-600 hover:bg-slate-100 hover:text-red-600 dark:text-slate-300 dark:hover:bg-slate-800"
 						class:justify-center={!expanded}
 					>
 						<Icon name="logout" class="h-5 w-5 shrink-0" />

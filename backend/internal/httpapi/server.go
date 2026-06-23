@@ -17,23 +17,32 @@ import (
 
 	"github.com/aditya/capital-hub/internal/auth"
 	"github.com/aditya/capital-hub/internal/config"
+	"github.com/aditya/capital-hub/internal/inventory"
 	"github.com/aditya/capital-hub/internal/notify"
 	"github.com/aditya/capital-hub/internal/web"
 )
 
 // Server holds shared dependencies for HTTP handlers.
 type Server struct {
-	cfg    *config.Config
-	db     *sql.DB
-	logger *slog.Logger
-	auth   *auth.Service
-	notify *notify.Service
-	router chi.Router
+	cfg       *config.Config
+	db        *sql.DB
+	logger    *slog.Logger
+	auth      *auth.Service
+	notify    *notify.Service
+	inventory *inventory.Service
+	router    chi.Router
 }
 
 // New constructs a Server and builds its route tree.
 func New(cfg *config.Config, db *sql.DB, logger *slog.Logger) (*Server, error) {
-	s := &Server{cfg: cfg, db: db, logger: logger, auth: auth.NewService(db, cfg), notify: notify.NewService(db)}
+	s := &Server{
+		cfg:       cfg,
+		db:        db,
+		logger:    logger,
+		auth:      auth.NewService(db, cfg),
+		notify:    notify.NewService(db),
+		inventory: inventory.NewService(db),
+	}
 	if err := s.routes(); err != nil {
 		return nil, err
 	}
@@ -76,6 +85,38 @@ func (s *Server) routes() error {
 			n.With(s.requireCSRF).Post("/{id}/read", s.handleMarkNotificationRead)
 		})
 
+		api.Route("/collections", func(c chi.Router) {
+			c.Use(s.requireAuth)
+			c.Get("/", s.handleListCollections)
+			c.With(s.requireCSRF).Post("/", s.handleCreateCollection)
+			c.Get("/{id}", s.handleGetCollection)
+			c.With(s.requireCSRF).Patch("/{id}", s.handleUpdateCollection)
+			c.With(s.requireCSRF).Delete("/{id}", s.handleDeleteCollection)
+			c.Get("/{id}/stats", s.handleCollectionStats)
+			c.Get("/{id}/items", s.handleListItems)
+			c.With(s.requireCSRF).Post("/{id}/items", s.handleCreateItem)
+		})
+
+		api.Route("/items", func(it chi.Router) {
+			it.Use(s.requireAuth)
+			it.Get("/{id}", s.handleGetItem)
+			it.With(s.requireCSRF).Patch("/{id}", s.handleUpdateItem)
+			it.With(s.requireCSRF).Delete("/{id}", s.handleDeleteItem)
+			it.With(s.requireCSRF).Post("/{id}/image", s.handleUploadItemImage)
+			it.Get("/{id}/stats", s.handleItemStats)
+			it.Get("/{id}/entries", s.handleListEntries)
+			it.With(s.requireCSRF).Post("/{id}/entries", s.handleCreateEntry)
+		})
+
+		api.Route("/entries", func(e chi.Router) {
+			e.Use(s.requireAuth)
+			e.With(s.requireCSRF).Patch("/{id}", s.handleUpdateEntry)
+			e.With(s.requireCSRF).Delete("/{id}", s.handleDeleteEntry)
+		})
+
+		api.With(s.requireAuth).Get("/search", s.handleSearch)
+		api.With(s.requireAuth).Get("/stats/portfolio", s.handlePortfolioStats)
+
 		api.Route("/admin", func(admin chi.Router) {
 			admin.Use(s.requireAuth, s.requireAdmin)
 			admin.Get("/users", s.handleAdminListUsers)
@@ -87,6 +128,11 @@ func (s *Server) routes() error {
 
 	// Liveness probe for orchestrators / proxies.
 	r.Get("/healthz", s.handleHealth)
+
+	// Serve user-uploaded files from disk. Requires a valid session so uploads
+	// are not publicly enumerable.
+	uploadFS := http.StripPrefix("/uploads/", http.FileServer(http.Dir(s.cfg.UploadsDir())))
+	r.With(s.requireAuth).Handle("/uploads/*", uploadFS)
 
 	assets, err := web.Assets()
 	if err != nil {

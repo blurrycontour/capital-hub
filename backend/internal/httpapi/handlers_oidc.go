@@ -62,7 +62,7 @@ func (s *Server) handleOIDCLogin(w http.ResponseWriter, r *http.Request) {
 		Value:    state,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   !s.cfg.IsDev(),
+		Secure:   requestIsSecure(r),
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   int((10 * time.Minute).Seconds()),
 		Expires:  time.Now().UTC().Add(10 * time.Minute),
@@ -72,7 +72,7 @@ func (s *Server) handleOIDCLogin(w http.ResponseWriter, r *http.Request) {
 		Value:    nonce,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   !s.cfg.IsDev(),
+		Secure:   requestIsSecure(r),
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   int((10 * time.Minute).Seconds()),
 		Expires:  time.Now().UTC().Add(10 * time.Minute),
@@ -178,10 +178,11 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.SetCookie(w, s.auth.SessionCookie(sessionID, expiresAt))
-	http.SetCookie(w, csrfCookie(s.cfg.IsDev()))
-	clearCookie(w, oidcStateCookieName, !s.cfg.IsDev())
-	clearCookie(w, oidcNonceCookieName, !s.cfg.IsDev())
+	secure := requestIsSecure(r)
+	http.SetCookie(w, s.auth.SessionCookie(sessionID, expiresAt, secure))
+	http.SetCookie(w, csrfCookie(secure))
+	clearCookie(w, oidcStateCookieName, secure)
+	clearCookie(w, oidcNonceCookieName, secure)
 
 	http.Redirect(w, r, "/", http.StatusFound)
 }

@@ -68,6 +68,33 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"user": user})
 }
 
+type updateProfileRequest struct {
+	DisplayName string `json:"displayName"`
+	Email       string `json:"email"`
+}
+
+func (s *Server) handleUpdateMe(w http.ResponseWriter, r *http.Request) {
+	current := userFromContext(r)
+	if current == nil {
+		writeAPIError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	var req updateProfileRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid json payload")
+		return
+	}
+
+	updated, err := s.auth.UpdateProfile(r.Context(), current.ID, req.DisplayName, req.Email)
+	if err != nil {
+		s.logger.WarnContext(r.Context(), "update profile failed", "user_id", current.ID, "error", err)
+		writeAPIError(w, http.StatusBadRequest, "failed to update profile")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"user": updated})
+}
+
 func (s *Server) handleCSRFToken(w http.ResponseWriter, r *http.Request) {
 	c, err := r.Cookie(csrfCookieName)
 	if err != nil || strings.TrimSpace(c.Value) == "" {

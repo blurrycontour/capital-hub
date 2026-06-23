@@ -52,6 +52,23 @@ export async function fetchProviders(): Promise<{ oidcEnabled: boolean }> {
 	return parseJSON<{ oidcEnabled: boolean }>(res);
 }
 
+export async function updateProfile(payload: {
+	displayName: string;
+	email: string;
+}): Promise<ApiUser> {
+	const csrf = await fetchCSRFToken();
+	const res = await fetch('/api/v1/auth/me', {
+		method: 'PATCH',
+		headers: {
+			'Content-Type': 'application/json',
+			'X-CSRF-Token': csrf
+		},
+		body: JSON.stringify(payload)
+	});
+	const body = await parseJSON<{ user: ApiUser }>(res);
+	return body.user;
+}
+
 export async function login(identifier: string, password: string): Promise<ApiUser> {
 	const res = await fetch('/api/v1/auth/login', {
 		method: 'POST',

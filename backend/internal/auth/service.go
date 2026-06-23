@@ -136,6 +136,42 @@ func (s *Service) CurrentUser(ctx context.Context, sessionID string) (*User, err
 	return &user, nil
 }
 
+// UpdateProfile updates the editable profile fields for a user and returns the
+// refreshed record. Only display name and email are user-editable.
+func (s *Service) UpdateProfile(ctx context.Context, userID int64, displayName, email string) (*User, error) {
+	displayName = strings.TrimSpace(displayName)
+	email = strings.TrimSpace(email)
+	if email == "" {
+		return nil, errors.New("email is required")
+	}
+
+	_, err := s.db.ExecContext(
+		ctx,
+		`UPDATE users SET display_name = ?, email = ?, updated_at = datetime('now') WHERE id = ?`,
+		displayName,
+		email,
+		userID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("update profile: %w", err)
+	}
+
+	var user User
+	var isAdmin int
+	var isActive int
+	err = s.db.QueryRowContext(
+		ctx,
+		`SELECT id, username, email, display_name, is_admin, is_active FROM users WHERE id = ? LIMIT 1`,
+		userID,
+	).Scan(&user.ID, &user.Username, &user.Email, &user.DisplayName, &isAdmin, &isActive)
+	if err != nil {
+		return nil, fmt.Errorf("reload user: %w", err)
+	}
+	user.IsAdmin = isAdmin == 1
+	user.IsActive = isActive == 1
+	return &user, nil
+}
+
 // ListUsers returns all users ordered by creation date.
 func (s *Service) ListUsers(ctx context.Context) ([]User, error) {
 	rows, err := s.db.QueryContext(

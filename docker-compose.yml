@@ -1,11 +1,11 @@
 services:
   capital-hub:
-    build:
-      context: ..
-      dockerfile: Dockerfile
+    restart: unless-stopped
     image: capital-hub:latest
     container_name: capital-hub
-    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: Dockerfile
     environment:
       CH_ENV: prod
       CH_ADDR: ":8080"
@@ -31,7 +31,6 @@ services:
       - ch-data:/data
     ports:
       - 8080:8080
-
 
 volumes:
   ch-data:

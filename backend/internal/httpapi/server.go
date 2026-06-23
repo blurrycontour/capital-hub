@@ -67,6 +67,7 @@ func (s *Server) routes() error {
 
 			authRouter.With(s.requireAuth, s.requireCSRF).Post("/logout", s.handleLogout)
 			authRouter.With(s.requireAuth).Get("/me", s.handleMe)
+			authRouter.With(s.requireAuth, s.requireCSRF).Patch("/me", s.handleUpdateMe)
 		})
 
 		api.Route("/notifications", func(n chi.Router) {

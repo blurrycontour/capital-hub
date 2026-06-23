@@ -24,6 +24,14 @@ jobs:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
 
+      # The backend embeds the built frontend via `//go:embed all:dist`, which
+      # requires at least one file to exist. The real build isn't needed to vet
+      # or test the Go code, so create a placeholder to satisfy the directive.
+      - name: Prepare embed placeholder
+        run: |
+          mkdir -p backend/internal/web/dist
+          touch backend/internal/web/dist/.gitkeep
+
       - name: go vet
         working-directory: backend
         run: go vet ./...

@@ -34,7 +34,9 @@
 	}
 
 	function hrefFor(r: SearchResult): string {
-		return r.type === 'collection' ? `/collections/${r.id}` : `/items/${r.id}`;
+		return r.type === 'collection'
+			? `/collections/${r.id}`
+			: `/collections/${r.collectionId}/items/${r.id}`;
 	}
 </script>
 

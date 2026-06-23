@@ -86,7 +86,7 @@
 					lat: it.locationLat,
 					lng: it.locationLng,
 					label: it.name,
-					href: `/items/${it.id}`
+					href: `/collections/${collectionId}/items/${it.id}`
 				});
 			}
 		}
@@ -345,7 +345,7 @@
 				</div>
 				<button
 					type="button"
-					class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+					class="inline-flex items-center gap-1.5 rounded-md bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-700"
 					onclick={openCreateItem}
 				>
 					<Icon name="plus" class="h-4 w-4" /> Add item
@@ -364,7 +364,7 @@
 				{#each items as item (item.id)}
 					<li>
 						<a
-							href={`/items/${item.id}`}
+							href={`/collections/${collectionId}/items/${item.id}`}
 							class="flex items-center gap-3 px-4 py-3 transition hover:bg-slate-50 dark:hover:bg-slate-800/60"
 						>
 							<span class="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-slate-100 text-slate-400 dark:bg-slate-800">
@@ -393,7 +393,7 @@
 				{#each items as item (item.id)}
 					<li>
 						<a
-							href={`/items/${item.id}`}
+							href={`/collections/${collectionId}/items/${item.id}`}
 							class="block overflow-hidden rounded-lg border border-slate-200 transition hover:border-sky-400 hover:shadow-sm dark:border-slate-800 dark:hover:border-sky-600"
 						>
 							<div class="flex h-32 items-center justify-center bg-slate-100 dark:bg-slate-800">

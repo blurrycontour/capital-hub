@@ -33,7 +33,7 @@
 		type CustomField
 	} from '$lib/api';
 
-	const itemId = $derived(Number($page.params.id));
+	const itemId = $derived(Number($page.params.itemId));
 
 	let item = $state<Item | null>(null);
 	let collection = $state<Collection | null>(null);
@@ -145,7 +145,7 @@
 			{ label: 'Collections', href: '/collections' },
 			{ label: collection?.name ?? 'Collection', href: `/collections/${collectionId}` },
 			{ label: 'Items', href: `/collections/${collectionId}` },
-			{ label: item.name, href: `/items/${itemId}` }
+			{ label: item.name, href: `/collections/${collectionId}/items/${itemId}` }
 		]);
 	}
 

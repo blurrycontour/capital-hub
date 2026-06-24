@@ -8,10 +8,15 @@
 	import { auth } from '$lib/auth.svelte';
 	import { breadcrumbs as crumbStore } from '$lib/breadcrumb.svelte';
 	import Icon, { type IconName } from '$lib/Icon.svelte';
+	import { useRegisterSW } from 'virtual:pwa-register/svelte';
 
 	let { children } = $props();
 	let theme = $state<Theme>('light');
 	let authError = $state('');
+
+	// PWA service-worker update prompt.
+	const { needRefresh, updateServiceWorker } = useRegisterSW();
+	const swUpdateAvailable = $derived($needRefresh);
 
 	// Sidebar layout state (persisted).
 	let collapsed = $state(false);
@@ -302,6 +307,29 @@
 	{:else}
 		<div class="flex min-h-screen items-center justify-center text-sm text-slate-500">
 			Redirecting...
+		</div>
+	{/if}
+
+	{#if swUpdateAvailable}
+		<div
+			class="fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-lg dark:border-slate-700 dark:bg-slate-900"
+		>
+			<span class="text-sm text-slate-700 dark:text-slate-200">A new version is available.</span>
+			<button
+				type="button"
+				onclick={() => updateServiceWorker(true)}
+				class="rounded-md bg-sky-600 px-3 py-1 text-sm font-medium text-white hover:bg-sky-500"
+			>
+				Update
+			</button>
+			<button
+				type="button"
+				onclick={() => needRefresh.set(false)}
+				aria-label="Dismiss update notification"
+				class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+			>
+				<Icon name="close" class="h-4 w-4" />
+			</button>
 		</div>
 	{/if}
 </div>

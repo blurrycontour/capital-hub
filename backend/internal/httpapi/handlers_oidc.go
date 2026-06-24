@@ -5,12 +5,98 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"golang.org/x/oauth2"
 )
+
+// oidcEffectiveConfig is the merged OIDC configuration (env vars override DB
+// values). It is built fresh per request so admin UI changes take effect
+// without a server restart.
+type oidcEffectiveConfig struct {
+	Enabled           bool
+	IssuerURL         string
+	ClientID          string
+	ClientSecret      string
+	RedirectURL       string
+	AdminGroup        string
+	ProviderName      string
+	AllowRegistration bool
+	// EnvFields contains the names of fields whose values come from environment
+	// variables and therefore cannot be changed via the admin UI.
+	EnvFields []string
+}
+
+// loadEffectiveOIDCConfig merges the persistent DB settings with any
+// environment-variable overrides. Environment variables take priority.
+func (s *Server) loadEffectiveOIDCConfig(ctx context.Context) (*oidcEffectiveConfig, error) {
+	get := func(key string) string {
+		v, _ := s.getSetting(ctx, key)
+		return v
+	}
+
+	cfg := &oidcEffectiveConfig{
+		Enabled:           get("oidc_enabled") == "1" || strings.EqualFold(get("oidc_enabled"), "true"),
+		IssuerURL:         get("oidc_issuer_url"),
+		ClientID:          get("oidc_client_id"),
+		ClientSecret:      get("oidc_client_secret"),
+		RedirectURL:       get("oidc_redirect_url"),
+		AdminGroup:        get("oidc_admin_group"),
+		ProviderName:      get("oidc_provider_name"),
+		AllowRegistration: get("oidc_allow_registration") != "0" && !strings.EqualFold(get("oidc_allow_registration"), "false"),
+	}
+	if cfg.ProviderName == "" {
+		cfg.ProviderName = s.cfg.OIDCProviderName
+	}
+
+	// Environment variables override DB values.
+	if v := os.Getenv("CH_OIDC_ENABLED"); v != "" {
+		cfg.Enabled = v == "1" || strings.EqualFold(v, "true")
+		cfg.EnvFields = append(cfg.EnvFields, "enabled")
+	} else if s.cfg.OIDCEnabled {
+		cfg.Enabled = true
+		cfg.EnvFields = append(cfg.EnvFields, "enabled")
+	}
+	if v := s.cfg.OIDCIssuerURL; v != "" {
+		cfg.IssuerURL = v
+		cfg.EnvFields = append(cfg.EnvFields, "issuerUrl")
+	}
+	if v := s.cfg.OIDCClientID; v != "" {
+		cfg.ClientID = v
+		cfg.EnvFields = append(cfg.EnvFields, "clientId")
+	}
+	if v := s.cfg.OIDCClientSecret; v != "" {
+		cfg.ClientSecret = v
+		cfg.EnvFields = append(cfg.EnvFields, "clientSecret")
+	}
+	if v := s.cfg.OIDCRedirectURL; v != "" {
+		cfg.RedirectURL = v
+		cfg.EnvFields = append(cfg.EnvFields, "redirectUrl")
+	}
+	if v := s.cfg.OIDCAdminGroup; v != "" {
+		cfg.AdminGroup = v
+		cfg.EnvFields = append(cfg.EnvFields, "adminGroup")
+	}
+	// Only count provider name as env-controlled when it differs from the default.
+	if v := os.Getenv("CH_OIDC_PROVIDER_NAME"); v != "" && v != "OIDC" {
+		cfg.ProviderName = v
+		cfg.EnvFields = append(cfg.EnvFields, "providerName")
+	}
+	if v := os.Getenv("CH_OIDC_ALLOW_REGISTRATION"); v != "" {
+		cfg.AllowRegistration = v != "0" && !strings.EqualFold(v, "false")
+		cfg.EnvFields = append(cfg.EnvFields, "allowRegistration")
+	} else {
+		cfg.AllowRegistration = s.cfg.OIDCAllowRegistration
+	}
+
+	if cfg.EnvFields == nil {
+		cfg.EnvFields = []string{}
+	}
+	return cfg, nil
+}
 
 const (
 	oidcStateCookieName = "ch_oidc_state"
@@ -26,18 +112,25 @@ type oidcClaims struct {
 }
 
 func (s *Server) handleAuthProviders(w http.ResponseWriter, r *http.Request) {
+	cfg, err := s.loadEffectiveOIDCConfig(r.Context())
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "failed to load provider config")
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"oidcEnabled": s.cfg.OIDCEnabled,
+		"oidcEnabled":      cfg.Enabled,
+		"oidcProviderName": cfg.ProviderName,
 	})
 }
 
 func (s *Server) handleOIDCLogin(w http.ResponseWriter, r *http.Request) {
-	if !s.cfg.OIDCEnabled {
+	oidcCfg, err := s.loadEffectiveOIDCConfig(r.Context())
+	if err != nil || !oidcCfg.Enabled {
 		writeAPIError(w, http.StatusNotFound, "oidc is disabled")
 		return
 	}
 
-	provider, verifier, oauthCfg, err := s.oidcObjects(r.Context())
+	provider, verifier, oauthCfg, err := s.oidcObjects(r.Context(), oidcCfg)
 	if err != nil {
 		s.logger.ErrorContext(r.Context(), "init oidc failed", "error", err)
 		writeAPIError(w, http.StatusBadGateway, "oidc provider unavailable")
@@ -83,7 +176,8 @@ func (s *Server) handleOIDCLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
-	if !s.cfg.OIDCEnabled {
+	oidcCfg, err := s.loadEffectiveOIDCConfig(r.Context())
+	if err != nil || !oidcCfg.Enabled {
 		writeAPIError(w, http.StatusNotFound, "oidc is disabled")
 		return
 	}
@@ -103,13 +197,12 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	provider, verifier, oauthCfg, err := s.oidcObjects(r.Context())
-	if err != nil {
-		s.logger.ErrorContext(r.Context(), "init oidc failed", "error", err)
+	provider, verifier, oauthCfg, err2 := s.oidcObjects(r.Context(), oidcCfg)
+	if err2 != nil {
+		s.logger.ErrorContext(r.Context(), "init oidc failed", "error", err2)
 		writeAPIError(w, http.StatusBadGateway, "oidc provider unavailable")
 		return
 	}
-	_ = provider
 
 	code := strings.TrimSpace(r.URL.Query().Get("code"))
 	if code == "" {
@@ -146,10 +239,33 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Many providers (e.g. Authelia) only put the `sub` claim in the ID token
+	// and expose email/name/groups via the UserInfo endpoint. Fetch it and use
+	// it to fill in any details the ID token did not carry.
+	if userInfo, uiErr := provider.UserInfo(r.Context(), oauth2.StaticTokenSource(token)); uiErr == nil {
+		var infoClaims oidcClaims
+		if err := userInfo.Claims(&infoClaims); err == nil {
+			if claims.Email == "" {
+				claims.Email = infoClaims.Email
+			}
+			if claims.Name == "" {
+				claims.Name = infoClaims.Name
+			}
+			if claims.PreferredUsername == "" {
+				claims.PreferredUsername = infoClaims.PreferredUsername
+			}
+			if len(claims.Groups) == 0 {
+				claims.Groups = infoClaims.Groups
+			}
+		}
+	} else {
+		s.logger.WarnContext(r.Context(), "oidc userinfo fetch failed", "error", uiErr)
+	}
+
 	makeAdmin := false
-	if s.cfg.OIDCAdminGroup != "" {
+	if oidcCfg.AdminGroup != "" {
 		for _, g := range claims.Groups {
-			if strings.EqualFold(strings.TrimSpace(g), strings.TrimSpace(s.cfg.OIDCAdminGroup)) {
+			if strings.EqualFold(strings.TrimSpace(g), strings.TrimSpace(oidcCfg.AdminGroup)) {
 				makeAdmin = true
 				break
 			}
@@ -158,12 +274,13 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 
 	user, err := s.auth.ResolveOrCreateOIDCUser(
 		r.Context(),
-		s.cfg.OIDCIssuerURL,
+		oidcCfg.IssuerURL,
 		claims.Subject,
 		claims.Email,
 		claims.PreferredUsername,
 		claims.Name,
 		makeAdmin,
+		oidcCfg.AllowRegistration,
 	)
 	if err != nil {
 		s.logger.ErrorContext(r.Context(), "resolve oidc user failed", "error", err)
@@ -200,33 +317,37 @@ func clearCookie(w http.ResponseWriter, name string, secure bool) {
 	})
 }
 
-func (s *Server) oidcObjects(ctx context.Context) (*oidc.Provider, *oidc.IDTokenVerifier, *oauth2.Config, error) {
+func (s *Server) oidcObjects(ctx context.Context, cfg *oidcEffectiveConfig) (*oidc.Provider, *oidc.IDTokenVerifier, *oauth2.Config, error) {
+	if cfg.IssuerURL == "" || cfg.ClientID == "" {
+		return nil, nil, nil, errors.New("oidc issuer URL and client ID are required")
+	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	provider, err := oidc.NewProvider(ctx, s.cfg.OIDCIssuerURL)
+	provider, err := oidc.NewProvider(ctx, cfg.IssuerURL)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 	oauthCfg := &oauth2.Config{
-		ClientID:     s.cfg.OIDCClientID,
-		ClientSecret: s.cfg.OIDCClientSecret,
+		ClientID:     cfg.ClientID,
+		ClientSecret: cfg.ClientSecret,
 		Endpoint:     provider.Endpoint(),
-		RedirectURL:  s.cfg.OIDCRedirectURL,
+		RedirectURL:  cfg.RedirectURL,
 		Scopes:       []string{oidc.ScopeOpenID, "profile", "email", "groups"},
 	}
-	verifier := provider.Verifier(&oidc.Config{ClientID: s.cfg.OIDCClientID})
+	verifier := provider.Verifier(&oidc.Config{ClientID: cfg.ClientID})
 	return provider, verifier, oauthCfg, nil
 }
 
 // This endpoint is useful for quick diagnostics and frontend capability checks.
 func (s *Server) handleOIDCDebugClaims(w http.ResponseWriter, r *http.Request) {
-	if !s.cfg.OIDCEnabled {
+	oidcCfg, err := s.loadEffectiveOIDCConfig(r.Context())
+	if err != nil || !oidcCfg.Enabled {
 		writeAPIError(w, http.StatusNotFound, "oidc is disabled")
 		return
 	}
 
-	provider, _, _, err := s.oidcObjects(r.Context())
+	provider, _, _, err := s.oidcObjects(r.Context(), oidcCfg)
 	if err != nil {
 		writeAPIError(w, http.StatusBadGateway, "oidc provider unavailable")
 		return

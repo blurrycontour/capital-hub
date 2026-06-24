@@ -25,6 +25,7 @@ type User struct {
 	AvatarPath  string `json:"avatarPath"`
 	IsAdmin     bool   `json:"isAdmin"`
 	IsActive    bool   `json:"isActive"`
+	Role        string `json:"role"`
 }
 
 // Service provides authentication/session operations backed by SQLite.
@@ -52,11 +53,11 @@ func (s *Service) Login(ctx context.Context, identifier, password, userAgent, re
 
 	err := s.db.QueryRowContext(
 		ctx,
-		`SELECT id, username, email, display_name, avatar_path, is_admin, is_active, password_hash
+		`SELECT id, username, email, display_name, avatar_path, is_admin, is_active, password_hash, role
 		 FROM users WHERE (username = ? OR email = ?) LIMIT 1`,
 		identifier,
 		identifier,
-	).Scan(&user.ID, &user.Username, &user.Email, &user.DisplayName, &user.AvatarPath, &isAdmin, &isActive, &passwordHash)
+	).Scan(&user.ID, &user.Username, &user.Email, &user.DisplayName, &user.AvatarPath, &isAdmin, &isActive, &passwordHash, &user.Role)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, "", time.Time{}, errors.New("invalid credentials")
@@ -118,14 +119,14 @@ func (s *Service) CurrentUser(ctx context.Context, sessionID string) (*User, err
 	var isActive int
 	err := s.db.QueryRowContext(
 		ctx,
-		`SELECT u.id, u.username, u.email, u.display_name, u.avatar_path, u.is_admin, u.is_active
+		`SELECT u.id, u.username, u.email, u.display_name, u.avatar_path, u.is_admin, u.is_active, u.role
 		 FROM sessions s
 		 JOIN users u ON u.id = s.user_id
 		 WHERE s.id = ?
 		   AND datetime(s.expires_at) > datetime('now')
 		 LIMIT 1`,
 		sessionID,
-	).Scan(&user.ID, &user.Username, &user.Email, &user.DisplayName, &user.AvatarPath, &isAdmin, &isActive)
+	).Scan(&user.ID, &user.Username, &user.Email, &user.DisplayName, &user.AvatarPath, &isAdmin, &isActive, &user.Role)
 	if err != nil {
 		return nil, err
 	}
@@ -162,9 +163,9 @@ func (s *Service) UpdateProfile(ctx context.Context, userID int64, displayName, 
 	var isActive int
 	err = s.db.QueryRowContext(
 		ctx,
-		`SELECT id, username, email, display_name, avatar_path, is_admin, is_active FROM users WHERE id = ? LIMIT 1`,
+		`SELECT id, username, email, display_name, avatar_path, is_admin, is_active, role FROM users WHERE id = ? LIMIT 1`,
 		userID,
-	).Scan(&user.ID, &user.Username, &user.Email, &user.DisplayName, &user.AvatarPath, &isAdmin, &isActive)
+	).Scan(&user.ID, &user.Username, &user.Email, &user.DisplayName, &user.AvatarPath, &isAdmin, &isActive, &user.Role)
 	if err != nil {
 		return nil, fmt.Errorf("reload user: %w", err)
 	}
@@ -195,9 +196,9 @@ func (s *Service) SetAvatar(ctx context.Context, userID int64, avatarPath string
 	var isActive int
 	if err := s.db.QueryRowContext(
 		ctx,
-		`SELECT id, username, email, display_name, avatar_path, is_admin, is_active FROM users WHERE id = ? LIMIT 1`,
+		`SELECT id, username, email, display_name, avatar_path, is_admin, is_active, role FROM users WHERE id = ? LIMIT 1`,
 		userID,
-	).Scan(&user.ID, &user.Username, &user.Email, &user.DisplayName, &user.AvatarPath, &isAdmin, &isActive); err != nil {
+	).Scan(&user.ID, &user.Username, &user.Email, &user.DisplayName, &user.AvatarPath, &isAdmin, &isActive, &user.Role); err != nil {
 		return nil, "", fmt.Errorf("reload user: %w", err)
 	}
 	user.IsAdmin = isAdmin == 1
@@ -209,7 +210,7 @@ func (s *Service) SetAvatar(ctx context.Context, userID int64, avatarPath string
 func (s *Service) ListUsers(ctx context.Context) ([]User, error) {
 	rows, err := s.db.QueryContext(
 		ctx,
-		`SELECT id, username, email, display_name, avatar_path, is_admin, is_active
+		`SELECT id, username, email, display_name, avatar_path, is_admin, is_active, role
 		 FROM users ORDER BY created_at ASC`,
 	)
 	if err != nil {
@@ -222,7 +223,7 @@ func (s *Service) ListUsers(ctx context.Context) ([]User, error) {
 		var u User
 		var isAdmin int
 		var isActive int
-		if err := rows.Scan(&u.ID, &u.Username, &u.Email, &u.DisplayName, &u.AvatarPath, &isAdmin, &isActive); err != nil {
+		if err := rows.Scan(&u.ID, &u.Username, &u.Email, &u.DisplayName, &u.AvatarPath, &isAdmin, &isActive, &u.Role); err != nil {
 			return nil, fmt.Errorf("scan user: %w", err)
 		}
 		u.IsAdmin = isAdmin == 1
@@ -235,8 +236,159 @@ func (s *Service) ListUsers(ctx context.Context) ([]User, error) {
 	return users, nil
 }
 
+// ChangePassword verifies the current password then replaces it with newPassword.
+func (s *Service) ChangePassword(ctx context.Context, userID int64, currentPassword, newPassword string) error {
+	var passwordHash sql.NullString
+	if err := s.db.QueryRowContext(ctx, `SELECT password_hash FROM users WHERE id = ? LIMIT 1`, userID).Scan(&passwordHash); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return errors.New("user not found")
+		}
+		return fmt.Errorf("lookup user: %w", err)
+	}
+	if !passwordHash.Valid || passwordHash.String == "" {
+		return errors.New("password login is not enabled for this account")
+	}
+	valid, err := VerifyPassword(currentPassword, passwordHash.String)
+	if err != nil {
+		return fmt.Errorf("verify password: %w", err)
+	}
+	if !valid {
+		return errors.New("current password is incorrect")
+	}
+	if err := ValidatePasswordStrength(newPassword); err != nil {
+		return err
+	}
+	hash, err := HashPassword(newPassword)
+	if err != nil {
+		return fmt.Errorf("hash new password: %w", err)
+	}
+	_, err = s.db.ExecContext(ctx, `UPDATE users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?`, hash, userID)
+	return err
+}
+
+// AdminCreateUser creates a new local username/email + password account with
+// the given role.
+func (s *Service) AdminCreateUser(ctx context.Context, username, email, displayName, password, role string) (*User, error) {
+	username = strings.TrimSpace(username)
+	email = strings.TrimSpace(strings.ToLower(email))
+	displayName = strings.TrimSpace(displayName)
+	role = strings.TrimSpace(strings.ToLower(role))
+
+	if username == "" || email == "" {
+		return nil, errors.New("username and email are required")
+	}
+	switch role {
+	case "administrator", "editor", "reader":
+	default:
+		return nil, errors.New("role must be one of: administrator, editor, reader")
+	}
+	if err := ValidatePasswordStrength(password); err != nil {
+		return nil, err
+	}
+
+	var exists int
+	err := s.db.QueryRowContext(ctx, `SELECT 1 FROM users WHERE username = ? OR email = ? LIMIT 1`, username, email).Scan(&exists)
+	if err == nil {
+		return nil, errors.New("a user with that username or email already exists")
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("check user existence: %w", err)
+	}
+
+	hash, err := HashPassword(password)
+	if err != nil {
+		return nil, fmt.Errorf("hash password: %w", err)
+	}
+	if displayName == "" {
+		displayName = username
+	}
+	isAdmin := 0
+	if role == "administrator" {
+		isAdmin = 1
+	}
+
+	res, err := s.db.ExecContext(
+		ctx,
+		`INSERT INTO users (username, email, password_hash, display_name, is_admin, is_active, role)
+		 VALUES (?, ?, ?, ?, ?, 1, ?)`,
+		username, email, hash, displayName, isAdmin, role,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("insert user: %w", err)
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return nil, fmt.Errorf("fetch new user id: %w", err)
+	}
+
+	return &User{
+		ID:          id,
+		Username:    username,
+		Email:       email,
+		DisplayName: displayName,
+		IsAdmin:     isAdmin == 1,
+		IsActive:    true,
+		Role:        role,
+	}, nil
+}
+
+// AdminUpdateUser updates a user's role and active status. The caller must not
+// be the same as the target (admins cannot demote themselves).
+func (s *Service) AdminUpdateUser(ctx context.Context, callerID, targetID int64, role string, isActive bool) (*User, error) {
+	role = strings.TrimSpace(strings.ToLower(role))
+	switch role {
+	case "administrator", "editor", "reader":
+	default:
+		return nil, errors.New("role must be one of: administrator, editor, reader")
+	}
+	if callerID == targetID && role != "administrator" {
+		return nil, errors.New("cannot remove administrator role from your own account")
+	}
+	isAdmin := 0
+	if role == "administrator" {
+		isAdmin = 1
+	}
+	isActiveInt := 0
+	if isActive {
+		isActiveInt = 1
+	}
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE users SET role = ?, is_admin = ?, is_active = ?, updated_at = datetime('now') WHERE id = ?`,
+		role, isAdmin, isActiveInt, targetID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("update user: %w", err)
+	}
+	var u User
+	var isAdminR int
+	var isActiveR int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT id, username, email, display_name, avatar_path, is_admin, is_active, role FROM users WHERE id = ? LIMIT 1`,
+		targetID,
+	).Scan(&u.ID, &u.Username, &u.Email, &u.DisplayName, &u.AvatarPath, &isAdminR, &isActiveR, &u.Role); err != nil {
+		return nil, fmt.Errorf("reload user: %w", err)
+	}
+	u.IsAdmin = isAdminR == 1
+	u.IsActive = isActiveR == 1
+	return &u, nil
+}
+
+// AdminDeleteUser permanently removes a user. Callers cannot delete themselves.
+func (s *Service) AdminDeleteUser(ctx context.Context, callerID, targetID int64) error {
+	if callerID == targetID {
+		return errors.New("cannot delete your own account")
+	}
+	_, err := s.db.ExecContext(ctx, `DELETE FROM users WHERE id = ?`, targetID)
+	if err != nil {
+		return fmt.Errorf("delete user: %w", err)
+	}
+	return nil
+}
+
 // ResolveOrCreateOIDCUser finds or creates a user for an OIDC identity and
-// links the identity to that user.
+// links the identity to that user. When allowRegistration is false and no
+// matching account exists (by existing OIDC identity or by email), an error is
+// returned instead of creating a new user.
 func (s *Service) ResolveOrCreateOIDCUser(
 	ctx context.Context,
 	provider,
@@ -245,6 +397,7 @@ func (s *Service) ResolveOrCreateOIDCUser(
 	preferredUsername,
 	displayName string,
 	makeAdmin bool,
+	allowRegistration bool,
 ) (*User, error) {
 	provider = strings.TrimSpace(provider)
 	subject = strings.TrimSpace(subject)
@@ -261,22 +414,38 @@ func (s *Service) ResolveOrCreateOIDCUser(
 	var isActive int
 	err := s.db.QueryRowContext(
 		ctx,
-		`SELECT u.id, u.username, u.email, u.display_name, u.avatar_path, u.is_admin, u.is_active
+		`SELECT u.id, u.username, u.email, u.display_name, u.avatar_path, u.is_admin, u.is_active, u.role
 		 FROM oidc_identities oi
 		 JOIN users u ON u.id = oi.user_id
 		 WHERE oi.provider = ? AND oi.subject = ?
 		 LIMIT 1`,
 		provider,
 		subject,
-	).Scan(&user.ID, &user.Username, &user.Email, &user.DisplayName, &user.AvatarPath, &isAdmin, &isActive)
+	).Scan(&user.ID, &user.Username, &user.Email, &user.DisplayName, &user.AvatarPath, &isAdmin, &isActive, &user.Role)
 	if err == nil {
 		user.IsAdmin = isAdmin == 1 || makeAdmin
 		user.IsActive = isActive == 1
 		if makeAdmin && !user.IsAdmin {
-			if _, err := s.db.ExecContext(ctx, `UPDATE users SET is_admin = 1, updated_at = datetime('now') WHERE id = ?`, user.ID); err != nil {
+			if _, err := s.db.ExecContext(ctx, `UPDATE users SET is_admin = 1, role = 'administrator', updated_at = datetime('now') WHERE id = ?`, user.ID); err != nil {
 				return nil, fmt.Errorf("promote oidc user to admin: %w", err)
 			}
 			user.IsAdmin = true
+			user.Role = "administrator"
+		}
+		// Backfill display name / email for accounts created before the
+		// provider returned these details (e.g. via UserInfo on later logins).
+		if user.DisplayName == "" && displayName != "" {
+			if _, err := s.db.ExecContext(ctx, `UPDATE users SET display_name = ?, updated_at = datetime('now') WHERE id = ?`, displayName, user.ID); err != nil {
+				return nil, fmt.Errorf("backfill display name: %w", err)
+			}
+			user.DisplayName = displayName
+		}
+		if (user.Email == "" || strings.HasSuffix(user.Email, "@oidc.local")) && email != "" {
+			// Ignore unique-constraint conflicts: another account may already
+			// own this email, in which case we keep the existing placeholder.
+			if _, err := s.db.ExecContext(ctx, `UPDATE users SET email = ?, updated_at = datetime('now') WHERE id = ?`, email, user.ID); err == nil {
+				user.Email = email
+			}
 		}
 		if !user.IsActive {
 			return nil, errors.New("user is inactive")
@@ -293,7 +462,7 @@ func (s *Service) ResolveOrCreateOIDCUser(
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	userID, userEmail, userName, userDisplayName, err := s.findOrCreateOIDCUserTx(ctx, tx, email, preferredUsername, displayName, makeAdmin)
+	userID, userEmail, userName, userDisplayName, userRole, err := s.findOrCreateOIDCUserTx(ctx, tx, email, preferredUsername, displayName, makeAdmin, allowRegistration)
 	if err != nil {
 		return nil, err
 	}
@@ -320,6 +489,7 @@ func (s *Service) ResolveOrCreateOIDCUser(
 		DisplayName: userDisplayName,
 		IsAdmin:     makeAdmin,
 		IsActive:    true,
+		Role:        userRole,
 	}, nil
 }
 
@@ -353,8 +523,8 @@ func (s *Service) EnsureBootstrapAdmin(ctx context.Context) error {
 	}
 	_, err = s.db.ExecContext(
 		ctx,
-		`INSERT INTO users (username, email, password_hash, display_name, is_admin, is_active)
-		 VALUES (?, ?, ?, ?, 1, 1)`,
+		`INSERT INTO users (username, email, password_hash, display_name, is_admin, is_active, role)
+		 VALUES (?, ?, ?, ?, 1, 1, 'administrator')`,
 		username,
 		email,
 		hash,
@@ -395,34 +565,40 @@ func (s *Service) findOrCreateOIDCUserTx(
 	preferredUsername,
 	displayName string,
 	makeAdmin bool,
-) (int64, string, string, string, error) {
+	allowRegistration bool,
+) (int64, string, string, string, string, error) {
 	if email != "" {
 		var existingID int64
 		var existingUsername string
 		var existingDisplayName string
+		var existingRole string
 		var isAdmin int
 		err := tx.QueryRowContext(
 			ctx,
-			`SELECT id, username, display_name, is_admin FROM users WHERE email = ? LIMIT 1`,
+			`SELECT id, username, display_name, is_admin, role FROM users WHERE email = ? LIMIT 1`,
 			email,
-		).Scan(&existingID, &existingUsername, &existingDisplayName, &isAdmin)
+		).Scan(&existingID, &existingUsername, &existingDisplayName, &isAdmin, &existingRole)
 		if err == nil {
 			if makeAdmin && isAdmin != 1 {
-				if _, err := tx.ExecContext(ctx, `UPDATE users SET is_admin = 1, updated_at = datetime('now') WHERE id = ?`, existingID); err != nil {
-					return 0, "", "", "", fmt.Errorf("promote existing user to admin: %w", err)
+				if _, err := tx.ExecContext(ctx, `UPDATE users SET is_admin = 1, role = 'administrator', updated_at = datetime('now') WHERE id = ?`, existingID); err != nil {
+					return 0, "", "", "", "", fmt.Errorf("promote existing user to admin: %w", err)
 				}
+				existingRole = "administrator"
 			}
 			if existingDisplayName == "" && displayName != "" {
 				if _, err := tx.ExecContext(ctx, `UPDATE users SET display_name = ?, updated_at = datetime('now') WHERE id = ?`, displayName, existingID); err != nil {
-					return 0, "", "", "", fmt.Errorf("update display name: %w", err)
+					return 0, "", "", "", "", fmt.Errorf("update display name: %w", err)
 				}
 				existingDisplayName = displayName
 			}
-			return existingID, email, existingUsername, existingDisplayName, nil
+			return existingID, email, existingUsername, existingDisplayName, existingRole, nil
 		}
 		if !errors.Is(err, sql.ErrNoRows) {
-			return 0, "", "", "", fmt.Errorf("lookup user by email: %w", err)
+			return 0, "", "", "", "", fmt.Errorf("lookup user by email: %w", err)
 		}
+	}
+	if !allowRegistration {
+		return 0, "", "", "", "", errors.New("user registration via OIDC is disabled")
 	}
 
 	usernameBase := normalizeUsername(preferredUsername)
@@ -436,14 +612,14 @@ func (s *Service) findOrCreateOIDCUserTx(
 	}
 	username, err := uniqueUsernameTx(ctx, tx, usernameBase)
 	if err != nil {
-		return 0, "", "", "", err
+		return 0, "", "", "", "", err
 	}
 
 	userEmail := email
 	if userEmail == "" {
 		userEmail, err = uniqueGeneratedEmailTx(ctx, tx, username)
 		if err != nil {
-			return 0, "", "", "", err
+			return 0, "", "", "", "", err
 		}
 	}
 
@@ -452,28 +628,31 @@ func (s *Service) findOrCreateOIDCUserTx(
 	}
 
 	adminInt := 0
+	role := "editor"
 	if makeAdmin {
 		adminInt = 1
+		role = "administrator"
 	}
 
 	res, err := tx.ExecContext(
 		ctx,
-		`INSERT INTO users (username, email, display_name, is_admin, is_active)
-		 VALUES (?, ?, ?, ?, 1)`,
+		`INSERT INTO users (username, email, display_name, is_admin, is_active, role)
+		 VALUES (?, ?, ?, ?, 1, ?)`,
 		username,
 		userEmail,
 		displayName,
 		adminInt,
+		role,
 	)
 	if err != nil {
-		return 0, "", "", "", fmt.Errorf("insert oidc user: %w", err)
+		return 0, "", "", "", "", fmt.Errorf("insert oidc user: %w", err)
 	}
 	userID, err := res.LastInsertId()
 	if err != nil {
-		return 0, "", "", "", fmt.Errorf("fetch oidc user id: %w", err)
+		return 0, "", "", "", "", fmt.Errorf("fetch oidc user id: %w", err)
 	}
 
-	return userID, userEmail, username, displayName, nil
+	return userID, userEmail, username, displayName, role, nil
 }
 
 var usernameSanitizer = regexp.MustCompile(`[^a-z0-9._-]+`)

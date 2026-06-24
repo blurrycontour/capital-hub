@@ -10,6 +10,7 @@
 	let loading = $state(false);
 	let error = $state('');
 	let oidcEnabled = $state(false);
+	let oidcProviderName = $state('OIDC');
 
 	onMount(async () => {
 		const me = await fetchMe();
@@ -21,6 +22,7 @@
 		try {
 			const providers = await fetchProviders();
 			oidcEnabled = providers.oidcEnabled;
+			oidcProviderName = providers.oidcProviderName || 'OIDC';
 		} catch {
 			oidcEnabled = false;
 		}
@@ -126,7 +128,7 @@
 					href="/api/v1/auth/oidc/login"
 					class="block rounded-md border border-slate-300 px-4 py-2 text-center text-sm hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
 				>
-					Sign in with OIDC
+					Sign in with {oidcProviderName}
 				</a>
 			{/if}
 		</div>

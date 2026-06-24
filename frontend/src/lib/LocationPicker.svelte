@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import Icon from '$lib/Icon.svelte';
+	import { loadLeaflet } from '$lib/leaflet';
 
 	let {
 		lat = $bindable(null),
@@ -36,9 +37,7 @@
 	}
 
 	async function initMap() {
-		const leaflet = await import('leaflet');
-		await import('leaflet/dist/leaflet.css');
-		L = leaflet.default ?? leaflet;
+		L = await loadLeaflet();
 
 		const start: [number, number] =
 			lat != null && lng != null ? [lat, lng] : defaultCenter;

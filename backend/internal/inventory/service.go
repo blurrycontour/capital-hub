@@ -17,6 +17,10 @@ import (
 // requesting user.
 var ErrNotFound = errors.New("not found")
 
+// ErrForbidden is returned when a user can see a collection (shared with them)
+// but lacks the permission level required for the requested action.
+var ErrForbidden = errors.New("forbidden")
+
 // Service provides CRUD and statistics operations backed by SQLite.
 type Service struct {
 	db *sql.DB
@@ -139,6 +143,10 @@ type Collection struct {
 	CreatedBy     string        `json:"createdBy"`
 	UpdatedBy     string        `json:"updatedBy"`
 	ItemCount     int           `json:"itemCount"`
+	// Sharing metadata, relative to the requesting user.
+	OwnerName   string `json:"ownerName"`
+	Shared      bool   `json:"shared"`      // true when not owned by the requester
+	AccessLevel string `json:"accessLevel"` // "owner" | "write" | "read"
 }
 
 // Item is a single asset within a collection.
@@ -200,27 +208,117 @@ SELECT c.id, c.name, c.description, c.currency,
        c.created_at, c.updated_at,
        COALESCE(cu.display_name, cu.username, ''),
        COALESCE(uu.display_name, uu.username, ''),
+       c.user_id,
+       COALESCE(ou.display_name, ou.username, ''),
+       ms.access,
        (SELECT COUNT(*) FROM items i WHERE i.collection_id = c.id)
 FROM collections c
 LEFT JOIN users cu ON cu.id = c.created_by
 LEFT JOIN users uu ON uu.id = c.updated_by
+LEFT JOIN users ou ON ou.id = c.user_id
+LEFT JOIN collection_shares ms ON ms.collection_id = c.id AND ms.user_id = ?
 `
 
-func scanCollection(s interface{ Scan(...any) error }) (Collection, error) {
+func scanCollection(s interface{ Scan(...any) error }, userID int64) (Collection, error) {
 	var c Collection
 	var customFields string
+	var ownerID int64
+	var ownerName string
+	var myAccess sql.NullString
 	if err := s.Scan(&c.ID, &c.Name, &c.Description, &c.Currency,
 		&c.LocationLat, &c.LocationLng, &c.LocationLabel, &customFields,
-		&c.CreatedAt, &c.UpdatedAt, &c.CreatedBy, &c.UpdatedBy, &c.ItemCount); err != nil {
+		&c.CreatedAt, &c.UpdatedAt, &c.CreatedBy, &c.UpdatedBy,
+		&ownerID, &ownerName, &myAccess, &c.ItemCount); err != nil {
 		return Collection{}, err
 	}
 	c.CustomFields = unmarshalCustomFields(customFields)
+	c.OwnerName = ownerName
+	if ownerID == userID {
+		c.AccessLevel = "owner"
+		c.Shared = false
+	} else {
+		c.Shared = true
+		if myAccess.Valid && myAccess.String == "write" {
+			c.AccessLevel = "write"
+		} else {
+			c.AccessLevel = "read"
+		}
+	}
 	return c, nil
 }
 
-// ListCollections returns all collections owned by the user.
+// collectionAccessLevel returns "owner", "write" or "read" for the user's
+// access to a collection, or ErrNotFound when they have no access at all.
+func (s *Service) collectionAccessLevel(ctx context.Context, userID, collectionID int64) (string, error) {
+	var ownerID int64
+	err := s.db.QueryRowContext(ctx, `SELECT user_id FROM collections WHERE id = ?`, collectionID).Scan(&ownerID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	if err != nil {
+		return "", fmt.Errorf("lookup collection owner: %w", err)
+	}
+	if ownerID == userID {
+		return "owner", nil
+	}
+	var access string
+	err = s.db.QueryRowContext(ctx,
+		`SELECT access FROM collection_shares WHERE collection_id = ? AND user_id = ?`,
+		collectionID, userID,
+	).Scan(&access)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	if err != nil {
+		return "", fmt.Errorf("lookup collection share: %w", err)
+	}
+	if access == "write" {
+		return "write", nil
+	}
+	return "read", nil
+}
+
+// requireCollectionWrite ensures the user can modify a collection's contents.
+// Returns ErrNotFound when there is no access and ErrForbidden for read-only.
+func (s *Service) requireCollectionWrite(ctx context.Context, userID, collectionID int64) error {
+	lvl, err := s.collectionAccessLevel(ctx, userID, collectionID)
+	if err != nil {
+		return err
+	}
+	if lvl == "read" {
+		return ErrForbidden
+	}
+	return nil
+}
+
+// itemCollectionID resolves the owning collection of an item.
+func (s *Service) itemCollectionID(ctx context.Context, itemID int64) (int64, error) {
+	var cid int64
+	err := s.db.QueryRowContext(ctx, `SELECT collection_id FROM items WHERE id = ?`, itemID).Scan(&cid)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, ErrNotFound
+	}
+	if err != nil {
+		return 0, fmt.Errorf("lookup item collection: %w", err)
+	}
+	return cid, nil
+}
+
+// requireItemWrite ensures the user can modify an item (and its entries).
+func (s *Service) requireItemWrite(ctx context.Context, userID, itemID int64) error {
+	cid, err := s.itemCollectionID(ctx, itemID)
+	if err != nil {
+		return err
+	}
+	return s.requireCollectionWrite(ctx, userID, cid)
+}
+
+// ListCollections returns all collections owned by or shared with the user.
 func (s *Service) ListCollections(ctx context.Context, userID int64) ([]Collection, error) {
-	rows, err := s.db.QueryContext(ctx, collectionSelect+` WHERE c.user_id = ? ORDER BY c.name COLLATE NOCASE ASC`, userID)
+	rows, err := s.db.QueryContext(ctx,
+		collectionSelect+` WHERE c.user_id = ? OR ms.access IS NOT NULL ORDER BY c.name COLLATE NOCASE ASC`,
+		userID, userID,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("list collections: %w", err)
 	}
@@ -228,7 +326,7 @@ func (s *Service) ListCollections(ctx context.Context, userID int64) ([]Collecti
 
 	out := make([]Collection, 0)
 	for rows.Next() {
-		c, err := scanCollection(rows)
+		c, err := scanCollection(rows, userID)
 		if err != nil {
 			return nil, fmt.Errorf("scan collection: %w", err)
 		}
@@ -237,10 +335,13 @@ func (s *Service) ListCollections(ctx context.Context, userID int64) ([]Collecti
 	return out, rows.Err()
 }
 
-// GetCollection returns a single owned collection.
+// GetCollection returns a collection the user owns or has been shared.
 func (s *Service) GetCollection(ctx context.Context, userID, id int64) (*Collection, error) {
-	row := s.db.QueryRowContext(ctx, collectionSelect+` WHERE c.id = ? AND c.user_id = ?`, id, userID)
-	c, err := scanCollection(row)
+	row := s.db.QueryRowContext(ctx,
+		collectionSelect+` WHERE c.id = ? AND (c.user_id = ? OR ms.access IS NOT NULL)`,
+		userID, id, userID,
+	)
+	c, err := scanCollection(row, userID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
@@ -329,6 +430,119 @@ func (s *Service) DeleteCollection(ctx context.Context, userID, id int64) error 
 	return nil
 }
 
+// ---------- Sharing ----------
+
+// CollectionShare describes a user a collection has been shared with.
+type CollectionShare struct {
+	UserID      int64  `json:"userId"`
+	Username    string `json:"username"`
+	Email       string `json:"email"`
+	DisplayName string `json:"displayName"`
+	Access      string `json:"access"` // "read" | "write"
+}
+
+// requireCollectionOwner returns ErrNotFound unless the user owns the collection.
+func (s *Service) requireCollectionOwner(ctx context.Context, userID, collectionID int64) error {
+	lvl, err := s.collectionAccessLevel(ctx, userID, collectionID)
+	if err != nil {
+		return err
+	}
+	if lvl != "owner" {
+		return ErrForbidden
+	}
+	return nil
+}
+
+// ListShares returns the users a collection (owned by userID) is shared with.
+func (s *Service) ListShares(ctx context.Context, userID, collectionID int64) ([]CollectionShare, error) {
+	if err := s.requireCollectionOwner(ctx, userID, collectionID); err != nil {
+		return nil, err
+	}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT u.id, u.username, u.email, COALESCE(u.display_name, ''), cs.access
+		 FROM collection_shares cs
+		 JOIN users u ON u.id = cs.user_id
+		 WHERE cs.collection_id = ?
+		 ORDER BY u.username COLLATE NOCASE ASC`,
+		collectionID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list shares: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]CollectionShare, 0)
+	for rows.Next() {
+		var sh CollectionShare
+		if err := rows.Scan(&sh.UserID, &sh.Username, &sh.Email, &sh.DisplayName, &sh.Access); err != nil {
+			return nil, fmt.Errorf("scan share: %w", err)
+		}
+		out = append(out, sh)
+	}
+	return out, rows.Err()
+}
+
+// ShareCollection grants another user (by username or email) read or write
+// access to a collection owned by userID.
+func (s *Service) ShareCollection(ctx context.Context, userID, collectionID int64, identifier, access string) (*CollectionShare, error) {
+	if err := s.requireCollectionOwner(ctx, userID, collectionID); err != nil {
+		return nil, err
+	}
+	identifier = strings.TrimSpace(identifier)
+	if identifier == "" {
+		return nil, errors.New("username or email is required")
+	}
+	access = strings.ToLower(strings.TrimSpace(access))
+	if access != "read" && access != "write" {
+		return nil, errors.New("access must be 'read' or 'write'")
+	}
+
+	var target CollectionShare
+	err := s.db.QueryRowContext(ctx,
+		`SELECT id, username, email, COALESCE(display_name, '') FROM users
+		 WHERE username = ? OR email = ? LIMIT 1`,
+		identifier, strings.ToLower(identifier),
+	).Scan(&target.UserID, &target.Username, &target.Email, &target.DisplayName)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, errors.New("no user found with that username or email")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("lookup share target: %w", err)
+	}
+	if target.UserID == userID {
+		return nil, errors.New("you already own this collection")
+	}
+
+	if _, err := s.db.ExecContext(ctx,
+		`INSERT INTO collection_shares (collection_id, user_id, access)
+		 VALUES (?, ?, ?)
+		 ON CONFLICT(collection_id, user_id) DO UPDATE SET access = excluded.access`,
+		collectionID, target.UserID, access,
+	); err != nil {
+		return nil, fmt.Errorf("upsert share: %w", err)
+	}
+	target.Access = access
+	return &target, nil
+}
+
+// UnshareCollection revokes a user's access to a collection owned by userID.
+func (s *Service) UnshareCollection(ctx context.Context, userID, collectionID, targetUserID int64) error {
+	if err := s.requireCollectionOwner(ctx, userID, collectionID); err != nil {
+		return err
+	}
+	res, err := s.db.ExecContext(ctx,
+		`DELETE FROM collection_shares WHERE collection_id = ? AND user_id = ?`,
+		collectionID, targetUserID,
+	)
+	if err != nil {
+		return fmt.Errorf("delete share: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // ---------- Items ----------
 
 const itemSelect = `
@@ -364,8 +578,8 @@ func (s *Service) ListItems(ctx context.Context, userID, collectionID int64) ([]
 		return nil, err
 	}
 	rows, err := s.db.QueryContext(ctx,
-		itemSelect+` WHERE i.collection_id = ? AND c.user_id = ? ORDER BY i.name COLLATE NOCASE ASC`,
-		collectionID, userID,
+		itemSelect+` WHERE i.collection_id = ? ORDER BY i.name COLLATE NOCASE ASC`,
+		collectionID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("list items: %w", err)
@@ -383,15 +597,18 @@ func (s *Service) ListItems(ctx context.Context, userID, collectionID int64) ([]
 	return out, rows.Err()
 }
 
-// GetItem returns a single owned item.
+// GetItem returns a single item the user owns or has been shared.
 func (s *Service) GetItem(ctx context.Context, userID, id int64) (*Item, error) {
-	row := s.db.QueryRowContext(ctx, itemSelect+` WHERE i.id = ? AND c.user_id = ?`, id, userID)
+	row := s.db.QueryRowContext(ctx, itemSelect+` WHERE i.id = ?`, id)
 	it, err := scanItem(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
 		return nil, fmt.Errorf("get item: %w", err)
+	}
+	if _, err := s.collectionAccessLevel(ctx, userID, it.CollectionID); err != nil {
+		return nil, err
 	}
 	return &it, nil
 }
@@ -408,9 +625,9 @@ type ItemInput struct {
 	CustomFields  []CustomField
 }
 
-// CreateItem inserts an item into an owned collection.
+// CreateItem inserts an item into a collection the user can write to.
 func (s *Service) CreateItem(ctx context.Context, userID, collectionID int64, in ItemInput) (*Item, error) {
-	if _, err := s.GetCollection(ctx, userID, collectionID); err != nil {
+	if err := s.requireCollectionWrite(ctx, userID, collectionID); err != nil {
 		return nil, err
 	}
 	name := strings.TrimSpace(in.Name)
@@ -435,9 +652,9 @@ func (s *Service) CreateItem(ctx context.Context, userID, collectionID int64, in
 	return s.GetItem(ctx, userID, id)
 }
 
-// UpdateItem updates an owned item's editable fields.
+// UpdateItem updates an item's editable fields (requires write access).
 func (s *Service) UpdateItem(ctx context.Context, userID, id int64, in ItemInput) (*Item, error) {
-	if _, err := s.GetItem(ctx, userID, id); err != nil {
+	if err := s.requireItemWrite(ctx, userID, id); err != nil {
 		return nil, err
 	}
 	name := strings.TrimSpace(in.Name)
@@ -464,6 +681,9 @@ func (s *Service) UpdateItem(ctx context.Context, userID, id int64, in ItemInput
 // AddItemAttachment appends an uploaded file to an owned item and returns the
 // refreshed record.
 func (s *Service) AddItemAttachment(ctx context.Context, userID, id int64, att Attachment) (*Item, error) {
+	if err := s.requireItemWrite(ctx, userID, id); err != nil {
+		return nil, err
+	}
 	item, err := s.GetItem(ctx, userID, id)
 	if err != nil {
 		return nil, err
@@ -482,6 +702,9 @@ func (s *Service) AddItemAttachment(ctx context.Context, userID, id int64, att A
 // AddItemImage appends an uploaded image to an owned item. The first image
 // also becomes the cover (image_path) used for thumbnails.
 func (s *Service) AddItemImage(ctx context.Context, userID, id int64, imagePath string) (*Item, error) {
+	if err := s.requireItemWrite(ctx, userID, id); err != nil {
+		return nil, err
+	}
 	item, err := s.GetItem(ctx, userID, id)
 	if err != nil {
 		return nil, err
@@ -501,6 +724,9 @@ func (s *Service) AddItemImage(ctx context.Context, userID, id int64, imagePath 
 // RemoveItemImage removes an image from an owned item and returns the refreshed
 // record. The cover is updated to the first remaining image (or cleared).
 func (s *Service) RemoveItemImage(ctx context.Context, userID, id int64, imagePath string) (*Item, error) {
+	if err := s.requireItemWrite(ctx, userID, id); err != nil {
+		return nil, err
+	}
 	item, err := s.GetItem(ctx, userID, id)
 	if err != nil {
 		return nil, err
@@ -525,12 +751,12 @@ func (s *Service) RemoveItemImage(ctx context.Context, userID, id int64, imagePa
 	return s.GetItem(ctx, userID, id)
 }
 
-// DeleteItem removes an owned item and cascades to its entries.
+// DeleteItem removes an item and cascades to its entries (requires write).
 func (s *Service) DeleteItem(ctx context.Context, userID, id int64) error {
-	res, err := s.db.ExecContext(ctx,
-		`DELETE FROM items WHERE id = ? AND collection_id IN (SELECT id FROM collections WHERE user_id = ?)`,
-		id, userID,
-	)
+	if err := s.requireItemWrite(ctx, userID, id); err != nil {
+		return err
+	}
+	res, err := s.db.ExecContext(ctx, `DELETE FROM items WHERE id = ?`, id)
 	if err != nil {
 		return fmt.Errorf("delete item: %w", err)
 	}
@@ -571,8 +797,8 @@ func (s *Service) collectionCurrencyForItem(ctx context.Context, userID, itemID 
 	var currency string
 	err := s.db.QueryRowContext(ctx,
 		`SELECT c.currency FROM items i JOIN collections c ON c.id = i.collection_id
-		 WHERE i.id = ? AND c.user_id = ?`,
-		itemID, userID,
+		 WHERE i.id = ?`,
+		itemID,
 	).Scan(&currency)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -586,14 +812,14 @@ func (s *Service) collectionCurrencyForItem(ctx context.Context, userID, itemID 
 	return currency, nil
 }
 
-// ListEntries returns entries for an owned item, newest first.
+// ListEntries returns entries for an item the user can read, newest first.
 func (s *Service) ListEntries(ctx context.Context, userID, itemID int64) ([]Entry, error) {
 	if _, err := s.GetItem(ctx, userID, itemID); err != nil {
 		return nil, err
 	}
 	rows, err := s.db.QueryContext(ctx,
-		entrySelect+` WHERE e.item_id = ? AND c.user_id = ? ORDER BY e.occurred_on DESC, e.id DESC`,
-		itemID, userID,
+		entrySelect+` WHERE e.item_id = ? ORDER BY e.occurred_on DESC, e.id DESC`,
+		itemID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("list entries: %w", err)
@@ -632,9 +858,9 @@ func normalizeEntry(in *EntryInput) error {
 	return nil
 }
 
-// GetEntry returns a single owned entry.
+// GetEntry returns a single entry the user owns or has been shared.
 func (s *Service) GetEntry(ctx context.Context, userID, id int64) (*Entry, error) {
-	row := s.db.QueryRowContext(ctx, entrySelect+` WHERE e.id = ? AND c.user_id = ?`, id, userID)
+	row := s.db.QueryRowContext(ctx, entrySelect+` WHERE e.id = ?`, id)
 	e, err := scanEntry(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -642,13 +868,25 @@ func (s *Service) GetEntry(ctx context.Context, userID, id int64) (*Entry, error
 		}
 		return nil, fmt.Errorf("get entry: %w", err)
 	}
+	if _, err := s.requireEntryAccess(ctx, userID, e.ItemID); err != nil {
+		return nil, err
+	}
 	return &e, nil
 }
 
-// CreateEntry records a new transaction entry against an owned item. The
-// currency is inherited from the owning collection.
+// requireEntryAccess verifies the user can at least read the entry's collection.
+func (s *Service) requireEntryAccess(ctx context.Context, userID, itemID int64) (string, error) {
+	cid, err := s.itemCollectionID(ctx, itemID)
+	if err != nil {
+		return "", err
+	}
+	return s.collectionAccessLevel(ctx, userID, cid)
+}
+
+// CreateEntry records a new transaction entry against an item the user can
+// write to. The currency is inherited from the owning collection.
 func (s *Service) CreateEntry(ctx context.Context, userID, itemID int64, in EntryInput) (*Entry, error) {
-	if _, err := s.GetItem(ctx, userID, itemID); err != nil {
+	if err := s.requireItemWrite(ctx, userID, itemID); err != nil {
 		return nil, err
 	}
 	if err := normalizeEntry(&in); err != nil {
@@ -677,6 +915,9 @@ func (s *Service) UpdateEntry(ctx context.Context, userID, id int64, in EntryInp
 	if err != nil {
 		return nil, err
 	}
+	if err := s.requireItemWrite(ctx, userID, current.ItemID); err != nil {
+		return nil, err
+	}
 	if err := normalizeEntry(&in); err != nil {
 		return nil, err
 	}
@@ -701,6 +942,9 @@ func (s *Service) AddEntryAttachment(ctx context.Context, userID, id int64, att 
 	if err != nil {
 		return nil, err
 	}
+	if err := s.requireItemWrite(ctx, userID, entry.ItemID); err != nil {
+		return nil, err
+	}
 	next := append(entry.Attachments, att)
 	_, err = s.db.ExecContext(ctx,
 		`UPDATE entries SET attachments = ?, updated_at = datetime('now'), updated_by = ? WHERE id = ?`,
@@ -712,14 +956,16 @@ func (s *Service) AddEntryAttachment(ctx context.Context, userID, id int64, att 
 	return s.GetEntry(ctx, userID, id)
 }
 
-// DeleteEntry removes an owned entry.
+// DeleteEntry removes an entry (requires write access).
 func (s *Service) DeleteEntry(ctx context.Context, userID, id int64) error {
-	res, err := s.db.ExecContext(ctx,
-		`DELETE FROM entries WHERE id = ? AND item_id IN (
-			SELECT i.id FROM items i JOIN collections c ON c.id = i.collection_id WHERE c.user_id = ?
-		)`,
-		id, userID,
-	)
+	entry, err := s.GetEntry(ctx, userID, id)
+	if err != nil {
+		return err
+	}
+	if err := s.requireItemWrite(ctx, userID, entry.ItemID); err != nil {
+		return err
+	}
+	res, err := s.db.ExecContext(ctx, `DELETE FROM entries WHERE id = ?`, id)
 	if err != nil {
 		return fmt.Errorf("delete entry: %w", err)
 	}

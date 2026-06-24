@@ -78,6 +78,7 @@ func (s *Server) routes() error {
 			authRouter.With(s.requireAuth).Get("/me", s.handleMe)
 			authRouter.With(s.requireAuth, s.requireCSRF).Patch("/me", s.handleUpdateMe)
 			authRouter.With(s.requireAuth, s.requireCSRF).Post("/me/avatar", s.handleUploadAvatar)
+			authRouter.With(s.requireAuth, s.requireCSRF).Post("/me/password", s.handleChangePassword)
 		})
 
 		api.Route("/notifications", func(n chi.Router) {
@@ -89,33 +90,36 @@ func (s *Server) routes() error {
 		api.Route("/collections", func(c chi.Router) {
 			c.Use(s.requireAuth)
 			c.Get("/", s.handleListCollections)
-			c.With(s.requireCSRF).Post("/", s.handleCreateCollection)
+			c.With(s.requireCSRF, s.requireNotReader).Post("/", s.handleCreateCollection)
 			c.Get("/{id}", s.handleGetCollection)
-			c.With(s.requireCSRF).Patch("/{id}", s.handleUpdateCollection)
-			c.With(s.requireCSRF).Delete("/{id}", s.handleDeleteCollection)
+			c.With(s.requireCSRF, s.requireNotReader).Patch("/{id}", s.handleUpdateCollection)
+			c.With(s.requireCSRF, s.requireNotReader).Delete("/{id}", s.handleDeleteCollection)
 			c.Get("/{id}/stats", s.handleCollectionStats)
 			c.Get("/{id}/items", s.handleListItems)
-			c.With(s.requireCSRF).Post("/{id}/items", s.handleCreateItem)
+			c.With(s.requireCSRF, s.requireNotReader).Post("/{id}/items", s.handleCreateItem)
+			c.Get("/{id}/shares", s.handleListCollectionShares)
+			c.With(s.requireCSRF, s.requireNotReader).Post("/{id}/shares", s.handleShareCollection)
+			c.With(s.requireCSRF, s.requireNotReader).Delete("/{id}/shares/{userId}", s.handleUnshareCollection)
 		})
 
 		api.Route("/items", func(it chi.Router) {
 			it.Use(s.requireAuth)
 			it.Get("/{id}", s.handleGetItem)
-			it.With(s.requireCSRF).Patch("/{id}", s.handleUpdateItem)
-			it.With(s.requireCSRF).Delete("/{id}", s.handleDeleteItem)
-			it.With(s.requireCSRF).Post("/{id}/image", s.handleUploadItemImage)
-			it.With(s.requireCSRF).Delete("/{id}/image", s.handleDeleteItemImage)
-			it.With(s.requireCSRF).Post("/{id}/attachments", s.handleUploadItemAttachment)
+			it.With(s.requireCSRF, s.requireNotReader).Patch("/{id}", s.handleUpdateItem)
+			it.With(s.requireCSRF, s.requireNotReader).Delete("/{id}", s.handleDeleteItem)
+			it.With(s.requireCSRF, s.requireNotReader).Post("/{id}/image", s.handleUploadItemImage)
+			it.With(s.requireCSRF, s.requireNotReader).Delete("/{id}/image", s.handleDeleteItemImage)
+			it.With(s.requireCSRF, s.requireNotReader).Post("/{id}/attachments", s.handleUploadItemAttachment)
 			it.Get("/{id}/stats", s.handleItemStats)
 			it.Get("/{id}/entries", s.handleListEntries)
-			it.With(s.requireCSRF).Post("/{id}/entries", s.handleCreateEntry)
+			it.With(s.requireCSRF, s.requireNotReader).Post("/{id}/entries", s.handleCreateEntry)
 		})
 
 		api.Route("/entries", func(e chi.Router) {
 			e.Use(s.requireAuth)
-			e.With(s.requireCSRF).Patch("/{id}", s.handleUpdateEntry)
-			e.With(s.requireCSRF).Delete("/{id}", s.handleDeleteEntry)
-			e.With(s.requireCSRF).Post("/{id}/attachments", s.handleUploadEntryAttachment)
+			e.With(s.requireCSRF, s.requireNotReader).Patch("/{id}", s.handleUpdateEntry)
+			e.With(s.requireCSRF, s.requireNotReader).Delete("/{id}", s.handleDeleteEntry)
+			e.With(s.requireCSRF, s.requireNotReader).Post("/{id}/attachments", s.handleUploadEntryAttachment)
 		})
 
 		api.With(s.requireAuth).Get("/search", s.handleSearch)
@@ -124,9 +128,14 @@ func (s *Server) routes() error {
 		api.Route("/admin", func(admin chi.Router) {
 			admin.Use(s.requireAuth, s.requireAdmin)
 			admin.Get("/users", s.handleAdminListUsers)
+			admin.With(s.requireCSRF).Post("/users", s.handleAdminCreateUser)
+			admin.With(s.requireCSRF).Patch("/users/{id}", s.handleAdminUpdateUser)
+			admin.With(s.requireCSRF).Delete("/users/{id}", s.handleAdminDeleteUser)
 			admin.Get("/settings/smtp", s.handleAdminGetSMTPSettings)
 			admin.With(s.requireCSRF).Put("/settings/smtp", s.handleAdminUpdateSMTPSettings)
 			admin.With(s.requireCSRF).Post("/settings/smtp/test", s.handleAdminTestSMTP)
+			admin.Get("/settings/oidc", s.handleAdminGetOIDCSettings)
+			admin.With(s.requireCSRF).Put("/settings/oidc", s.handleAdminUpdateOIDCSettings)
 		})
 	})
 
@@ -206,6 +215,21 @@ func (s *Server) requireAdmin(next http.Handler) http.Handler {
 		user := userFromContext(r)
 		if user == nil || !user.IsAdmin {
 			writeAPIError(w, http.StatusForbidden, "admin access required")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) requireNotReader(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user := userFromContext(r)
+		if user == nil {
+			writeAPIError(w, http.StatusUnauthorized, "authentication required")
+			return
+		}
+		if user.Role == "reader" {
+			writeAPIError(w, http.StatusForbidden, "read-only access: this action requires editor or administrator role")
 			return
 		}
 		next.ServeHTTP(w, r)

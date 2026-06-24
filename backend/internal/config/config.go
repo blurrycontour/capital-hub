@@ -11,9 +11,6 @@ import (
 
 // Config holds all runtime configuration for the server.
 type Config struct {
-	// Env is the deployment environment: "dev" or "prod".
-	Env string `env:"CH_ENV" envDefault:"prod"`
-
 	// Addr is the TCP address the HTTP server listens on.
 	Addr string `env:"CH_ADDR" envDefault:":8080"`
 
@@ -27,7 +24,7 @@ type Config struct {
 	// LogLevel is one of: debug, info, warn, error.
 	LogLevel string `env:"CH_LOG_LEVEL" envDefault:"info"`
 
-	// SessionSecret signs session cookies. Required in prod; auto-generated in dev.
+	// SessionSecret signs session cookies.
 	SessionSecret string `env:"CH_SESSION_SECRET"`
 
 	// SessionCookieName is the HTTP cookie name carrying the session ID.
@@ -39,12 +36,15 @@ type Config struct {
 	// OIDCEnabled controls whether OIDC login is enabled.
 	OIDCEnabled bool `env:"CH_OIDC_ENABLED" envDefault:"false"`
 
-	// OIDC settings are plumbed in Phase 2 and used by the OIDC flow in later steps.
-	OIDCIssuerURL    string `env:"CH_OIDC_ISSUER_URL"`
-	OIDCClientID     string `env:"CH_OIDC_CLIENT_ID"`
-	OIDCClientSecret string `env:"CH_OIDC_CLIENT_SECRET"`
-	OIDCRedirectURL  string `env:"CH_OIDC_REDIRECT_URL"`
-	OIDCAdminGroup   string `env:"CH_OIDC_ADMIN_GROUP"`
+	// OIDC settings. These env vars take priority over values stored in the
+	// admin UI settings table.
+	OIDCIssuerURL         string `env:"CH_OIDC_ISSUER_URL"`
+	OIDCClientID          string `env:"CH_OIDC_CLIENT_ID"`
+	OIDCClientSecret      string `env:"CH_OIDC_CLIENT_SECRET"`
+	OIDCRedirectURL       string `env:"CH_OIDC_REDIRECT_URL"`
+	OIDCAdminGroup        string `env:"CH_OIDC_ADMIN_GROUP"`
+	OIDCProviderName      string `env:"CH_OIDC_PROVIDER_NAME" envDefault:"OIDC"`
+	OIDCAllowRegistration bool   `env:"CH_OIDC_ALLOW_REGISTRATION" envDefault:"true"`
 
 	// Bootstrap admin user (optional). If set, startup ensures this admin exists.
 	BootstrapAdminUsername string `env:"CH_BOOTSTRAP_ADMIN_USERNAME"`
@@ -62,7 +62,6 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("parse env: %w", err)
 	}
 
-	cfg.Env = strings.ToLower(cfg.Env)
 	cfg.LogLevel = strings.ToLower(cfg.LogLevel)
 
 	abs, err := filepath.Abs(cfg.DataDir)
@@ -78,25 +77,18 @@ func Load() (*Config, error) {
 }
 
 func (c *Config) validate() error {
-	if c.Env != "dev" && c.Env != "prod" {
-		return fmt.Errorf("CH_ENV must be 'dev' or 'prod', got %q", c.Env)
-	}
-	if c.Env == "prod" && c.SessionSecret == "" {
-		return fmt.Errorf("CH_SESSION_SECRET is required when CH_ENV=prod")
-	}
 	if c.SessionTTLHours <= 0 {
 		return fmt.Errorf("CH_SESSION_TTL_HOURS must be > 0")
 	}
-	if c.OIDCEnabled {
+	// OIDC fields may alternatively be configured via the admin UI settings
+	// table, so we only validate them when all three are set via env vars.
+	if c.OIDCEnabled && (c.OIDCIssuerURL != "" || c.OIDCClientID != "" || c.OIDCRedirectURL != "") {
 		if c.OIDCIssuerURL == "" || c.OIDCClientID == "" || c.OIDCRedirectURL == "" {
-			return fmt.Errorf("CH_OIDC_ISSUER_URL, CH_OIDC_CLIENT_ID and CH_OIDC_REDIRECT_URL are required when CH_OIDC_ENABLED=true")
+			return fmt.Errorf("CH_OIDC_ISSUER_URL, CH_OIDC_CLIENT_ID and CH_OIDC_REDIRECT_URL must all be set together when configuring OIDC via environment variables")
 		}
 	}
 	return nil
 }
-
-// IsDev reports whether the server is running in development mode.
-func (c *Config) IsDev() bool { return c.Env == "dev" }
 
 // DBPath returns the absolute path to the SQLite database file.
 func (c *Config) DBPath() string { return filepath.Join(c.DataDir, "capital-hub.db") }

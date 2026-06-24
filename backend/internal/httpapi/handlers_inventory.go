@@ -33,6 +33,8 @@ func (s *Server) writeInventoryError(w http.ResponseWriter, r *http.Request, err
 	switch {
 	case errors.Is(err, inventory.ErrNotFound):
 		writeAPIError(w, http.StatusNotFound, "not found")
+	case errors.Is(err, inventory.ErrForbidden):
+		writeAPIError(w, http.StatusForbidden, "you do not have permission to perform this action")
 	default:
 		s.logger.ErrorContext(r.Context(), action+" failed", "error", err)
 		writeAPIError(w, http.StatusInternalServerError, action+" failed")
@@ -158,6 +160,72 @@ func (s *Server) handleCollectionStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"stats": stats})
+}
+
+// ---------- Collection sharing ----------
+
+type shareCollectionRequest struct {
+	Identifier string `json:"identifier"`
+	Access     string `json:"access"`
+}
+
+func (s *Server) handleListCollectionShares(w http.ResponseWriter, r *http.Request) {
+	user := userFromContext(r)
+	id, ok := s.pathID(r)
+	if !ok {
+		writeAPIError(w, http.StatusBadRequest, "invalid collection id")
+		return
+	}
+	shares, err := s.inventory.ListShares(r.Context(), user.ID, id)
+	if err != nil {
+		s.writeInventoryError(w, r, err, "list shares")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"shares": shares})
+}
+
+func (s *Server) handleShareCollection(w http.ResponseWriter, r *http.Request) {
+	user := userFromContext(r)
+	id, ok := s.pathID(r)
+	if !ok {
+		writeAPIError(w, http.StatusBadRequest, "invalid collection id")
+		return
+	}
+	var req shareCollectionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid json payload")
+		return
+	}
+	share, err := s.inventory.ShareCollection(r.Context(), user.ID, id, req.Identifier, req.Access)
+	if err != nil {
+		if errors.Is(err, inventory.ErrNotFound) || errors.Is(err, inventory.ErrForbidden) {
+			s.writeInventoryError(w, r, err, "share collection")
+			return
+		}
+		// Remaining errors are user-input problems (unknown user, bad access).
+		writeAPIError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{"share": share})
+}
+
+func (s *Server) handleUnshareCollection(w http.ResponseWriter, r *http.Request) {
+	user := userFromContext(r)
+	id, ok := s.pathID(r)
+	if !ok {
+		writeAPIError(w, http.StatusBadRequest, "invalid collection id")
+		return
+	}
+	targetID, err := strconv.ParseInt(chi.URLParam(r, "userId"), 10, 64)
+	if err != nil || targetID <= 0 {
+		writeAPIError(w, http.StatusBadRequest, "invalid user id")
+		return
+	}
+	if err := s.inventory.UnshareCollection(r.Context(), user.ID, id, targetID); err != nil {
+		s.writeInventoryError(w, r, err, "unshare collection")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 // ---------- Items ----------

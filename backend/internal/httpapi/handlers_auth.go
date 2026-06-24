@@ -10,8 +10,11 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/go-chi/chi/v5"
 )
 
 type loginRequest struct {
@@ -146,6 +149,114 @@ func (s *Server) handleAdminListUsers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"users": users})
 }
 
+type changePasswordRequest struct {
+	CurrentPassword string `json:"currentPassword"`
+	NewPassword     string `json:"newPassword"`
+}
+
+func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
+	current := userFromContext(r)
+	if current == nil {
+		writeAPIError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	var req changePasswordRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid json payload")
+		return
+	}
+	if strings.TrimSpace(req.CurrentPassword) == "" || strings.TrimSpace(req.NewPassword) == "" {
+		writeAPIError(w, http.StatusBadRequest, "currentPassword and newPassword are required")
+		return
+	}
+
+	if err := s.auth.ChangePassword(r.Context(), current.ID, req.CurrentPassword, req.NewPassword); err != nil {
+		s.logger.WarnContext(r.Context(), "change password failed", "user_id", current.ID, "error", err)
+		writeAPIError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+type adminCreateUserRequest struct {
+	Username    string `json:"username"`
+	Email       string `json:"email"`
+	DisplayName string `json:"displayName"`
+	Password    string `json:"password"`
+	Role        string `json:"role"`
+}
+
+func (s *Server) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
+	var req adminCreateUserRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid json payload")
+		return
+	}
+
+	created, err := s.auth.AdminCreateUser(r.Context(), req.Username, req.Email, req.DisplayName, req.Password, req.Role)
+	if err != nil {
+		s.logger.WarnContext(r.Context(), "admin create user failed", "error", err)
+		writeAPIError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{"user": created})
+}
+
+type adminUpdateUserRequest struct {
+	Role     string `json:"role"`
+	IsActive bool   `json:"isActive"`
+}
+
+func (s *Server) handleAdminUpdateUser(w http.ResponseWriter, r *http.Request) {
+	caller := userFromContext(r)
+	if caller == nil {
+		writeAPIError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	targetID, err := parseIDParam(r, "id")
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid user id")
+		return
+	}
+
+	var req adminUpdateUserRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid json payload")
+		return
+	}
+
+	updated, err := s.auth.AdminUpdateUser(r.Context(), caller.ID, targetID, req.Role, req.IsActive)
+	if err != nil {
+		s.logger.WarnContext(r.Context(), "admin update user failed", "target_id", targetID, "error", err)
+		writeAPIError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"user": updated})
+}
+
+func (s *Server) handleAdminDeleteUser(w http.ResponseWriter, r *http.Request) {
+	caller := userFromContext(r)
+	if caller == nil {
+		writeAPIError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	targetID, err := parseIDParam(r, "id")
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid user id")
+		return
+	}
+
+	if err := s.auth.AdminDeleteUser(r.Context(), caller.ID, targetID); err != nil {
+		s.logger.WarnContext(r.Context(), "admin delete user failed", "target_id", targetID, "error", err)
+		writeAPIError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
 func csrfCookie(secure bool) *http.Cookie {
 	token, err := randomToken(32)
 	if err != nil {
@@ -214,4 +325,8 @@ func parseOptionalSessionCookie(r *http.Request, name string) (string, error) {
 		return "", sql.ErrNoRows
 	}
 	return c.Value, nil
+}
+
+func parseIDParam(r *http.Request, param string) (int64, error) {
+	return strconv.ParseInt(chi.URLParam(r, param), 10, 64)
 }

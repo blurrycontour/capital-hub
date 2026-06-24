@@ -180,6 +180,15 @@
 						<div class="min-w-0 flex-1">
 							<div class="flex items-center gap-2">
 								<span class="truncate font-medium">{c.name}</span>
+								{#if c.shared}
+									<span
+										class="inline-flex shrink-0 items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700 dark:bg-violet-950/40 dark:text-violet-300"
+										title={`Shared by ${c.ownerName} (${c.accessLevel === 'write' ? 'can edit' : 'read only'})`}
+									>
+										<Icon name="users" class="h-3 w-3" />
+										Shared
+									</span>
+								{/if}
 								{#if c.locationLat != null && c.locationLng != null}
 									<Icon name="map-pin" class="h-3.5 w-3.5 shrink-0 text-slate-400" />
 								{/if}
@@ -209,12 +218,23 @@
 					>
 						<div class="flex items-start justify-between gap-2">
 							<h2 class="font-semibold">{c.name}</h2>
-							<span
-								class="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300"
-							>
-								<Icon name="currency" class="h-3.5 w-3.5" />
-								{c.currency}
-							</span>
+							<div class="flex shrink-0 items-center gap-1">
+								{#if c.shared}
+									<span
+										class="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700 dark:bg-violet-950/40 dark:text-violet-300"
+										title={`Shared by ${c.ownerName} (${c.accessLevel === 'write' ? 'can edit' : 'read only'})`}
+									>
+										<Icon name="users" class="h-3 w-3" />
+										Shared
+									</span>
+								{/if}
+								<span
+									class="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+								>
+									<Icon name="currency" class="h-3.5 w-3.5" />
+									{c.currency}
+								</span>
+							</div>
 						</div>
 						{#if c.description}
 							<p class="mt-1 line-clamp-3 flex-1 text-sm text-slate-500">{c.description}</p>

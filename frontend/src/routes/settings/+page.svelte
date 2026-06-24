@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { auth } from '$lib/auth.svelte';
-	import { updateProfile, uploadAvatar } from '$lib/api';
+	import { changePassword, updateProfile, uploadAvatar } from '$lib/api';
 	import Icon from '$lib/Icon.svelte';
 
 	const user = $derived(auth.user);
@@ -12,6 +12,14 @@
 	let error = $state('');
 	let success = $state('');
 	let seededFor = $state<number | null>(null);
+
+	// Password change state.
+	let currentPassword = $state('');
+	let newPassword = $state('');
+	let confirmPassword = $state('');
+	let changingPassword = $state(false);
+	let passwordError = $state('');
+	let passwordSuccess = $state('');
 
 	// Avatar upload state.
 	let avatarInput = $state<HTMLInputElement | null>(null);
@@ -76,6 +84,27 @@
 			error = err instanceof Error ? err.message : 'Failed to update profile';
 		} finally {
 			saving = false;
+		}
+	}
+
+	async function savePassword() {
+		passwordError = '';
+		passwordSuccess = '';
+		if (newPassword !== confirmPassword) {
+			passwordError = 'New passwords do not match';
+			return;
+		}
+		changingPassword = true;
+		try {
+			await changePassword(currentPassword, newPassword);
+			passwordSuccess = 'Password changed successfully';
+			currentPassword = '';
+			newPassword = '';
+			confirmPassword = '';
+		} catch (err) {
+			passwordError = err instanceof Error ? err.message : 'Failed to change password';
+		} finally {
+			changingPassword = false;
 		}
 	}
 </script>
@@ -208,7 +237,7 @@
 				</div>
 				<div>
 					<dt class="text-xs uppercase tracking-wide text-slate-500">Role</dt>
-					<dd class="text-sm">{user.isAdmin ? 'Administrator' : 'Member'}</dd>
+					<dd class="text-sm capitalize">{user.role || (user.isAdmin ? 'administrator' : 'editor')}</dd>
 				</div>
 				<div>
 					<dt class="text-xs uppercase tracking-wide text-slate-500">Status</dt>
@@ -226,6 +255,71 @@
 				</div>
 			</dl>
 		</div>
+
+		<!-- Change password -->
+		<form
+			onsubmit={(e) => {
+				e.preventDefault();
+				void savePassword();
+			}}
+			class="space-y-4 rounded-lg border border-slate-200 p-5 dark:border-slate-800"
+		>
+			<div class="flex items-center gap-2">
+				<Icon name="lock" class="h-5 w-5 text-slate-500" />
+				<h2 class="text-lg font-semibold">Change password</h2>
+			</div>
+
+			{#if passwordError}
+				<div class="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-700 dark:bg-red-950/40 dark:text-red-200">
+					{passwordError}
+				</div>
+			{/if}
+			{#if passwordSuccess}
+				<div class="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200">
+					{passwordSuccess}
+				</div>
+			{/if}
+
+			<div class="grid gap-4 sm:grid-cols-3">
+				<label class="space-y-1">
+					<span class="text-sm font-medium">Current password</span>
+					<input
+						type="password"
+						bind:value={currentPassword}
+						required
+						class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 dark:border-slate-700 dark:bg-slate-900"
+					/>
+				</label>
+				<label class="space-y-1">
+					<span class="text-sm font-medium">New password</span>
+					<input
+						type="password"
+						bind:value={newPassword}
+						required
+						class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 dark:border-slate-700 dark:bg-slate-900"
+					/>
+				</label>
+				<label class="space-y-1">
+					<span class="text-sm font-medium">Confirm new password</span>
+					<input
+						type="password"
+						bind:value={confirmPassword}
+						required
+						class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 dark:border-slate-700 dark:bg-slate-900"
+					/>
+				</label>
+			</div>
+
+			<div class="border-t border-slate-200 pt-4 dark:border-slate-800">
+				<button
+					type="submit"
+					disabled={changingPassword}
+					class="rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-50"
+				>
+					{changingPassword ? 'Saving...' : 'Change password'}
+				</button>
+			</div>
+		</form>
 	{:else}
 		<div class="rounded-lg border border-slate-200 p-4 text-sm text-slate-500 dark:border-slate-800">
 			Loading profile...

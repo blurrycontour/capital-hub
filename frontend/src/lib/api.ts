@@ -6,6 +6,7 @@ export type ApiUser = {
 	avatarPath: string;
 	isAdmin: boolean;
 	isActive: boolean;
+	role: string;
 };
 
 export type NotificationItem = {
@@ -48,9 +49,9 @@ export async function fetchMe(): Promise<ApiUser | null> {
 	return body.user;
 }
 
-export async function fetchProviders(): Promise<{ oidcEnabled: boolean }> {
+export async function fetchProviders(): Promise<{ oidcEnabled: boolean; oidcProviderName: string }> {
 	const res = await fetch('/api/v1/auth/providers');
-	return parseJSON<{ oidcEnabled: boolean }>(res);
+	return parseJSON<{ oidcEnabled: boolean; oidcProviderName: string }>(res);
 }
 
 export async function updateProfile(payload: {
@@ -167,6 +168,101 @@ export async function testSMTP(to: string): Promise<void> {
 	await parseJSON<{ ok: boolean }>(res);
 }
 
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+	const csrf = await fetchCSRFToken();
+	const res = await fetch('/api/v1/auth/me/password', {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/json',
+			'X-CSRF-Token': csrf
+		},
+		body: JSON.stringify({ currentPassword, newPassword })
+	});
+	await parseJSON<{ ok: boolean }>(res);
+}
+
+export async function adminCreateUser(payload: {
+	username: string;
+	email: string;
+	displayName: string;
+	password: string;
+	role: string;
+}): Promise<ApiUser> {
+	const csrf = await fetchCSRFToken();
+	const res = await fetch('/api/v1/admin/users', {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/json',
+			'X-CSRF-Token': csrf
+		},
+		body: JSON.stringify(payload)
+	});
+	const body = await parseJSON<{ user: ApiUser }>(res);
+	return body.user;
+}
+
+export async function adminUpdateUser(id: number, role: string, isActive: boolean): Promise<ApiUser> {
+	const csrf = await fetchCSRFToken();
+	const res = await fetch(`/api/v1/admin/users/${id}`, {
+		method: 'PATCH',
+		headers: {
+			'Content-Type': 'application/json',
+			'X-CSRF-Token': csrf
+		},
+		body: JSON.stringify({ role, isActive })
+	});
+	const body = await parseJSON<{ user: ApiUser }>(res);
+	return body.user;
+}
+
+export async function adminDeleteUser(id: number): Promise<void> {
+	const csrf = await fetchCSRFToken();
+	const res = await fetch(`/api/v1/admin/users/${id}`, {
+		method: 'DELETE',
+		headers: { 'X-CSRF-Token': csrf }
+	});
+	await parseJSON<{ ok: boolean }>(res);
+}
+
+export type OIDCSettings = {
+	enabled: boolean;
+	issuerUrl: string;
+	clientId: string;
+	clientSecretSet: boolean;
+	redirectUrl: string;
+	adminGroup: string;
+	providerName: string;
+	allowRegistration: boolean;
+	envFields: string[];
+};
+
+export async function getOIDCSettings(): Promise<OIDCSettings> {
+	const res = await fetch('/api/v1/admin/settings/oidc');
+	return parseJSON<OIDCSettings>(res);
+}
+
+export async function updateOIDCSettings(payload: {
+	enabled: boolean;
+	issuerUrl: string;
+	clientId: string;
+	clientSecret: string;
+	redirectUrl: string;
+	adminGroup: string;
+	providerName: string;
+	allowRegistration: boolean;
+}): Promise<OIDCSettings> {
+	const csrf = await fetchCSRFToken();
+	const res = await fetch('/api/v1/admin/settings/oidc', {
+		method: 'PUT',
+		headers: {
+			'Content-Type': 'application/json',
+			'X-CSRF-Token': csrf
+		},
+		body: JSON.stringify(payload)
+	});
+	return parseJSON<OIDCSettings>(res);
+}
+
 // ---------- Inventory: collections, items, entries ----------
 
 export type CustomField = {
@@ -193,6 +289,17 @@ export type Collection = {
 	createdBy: string;
 	updatedBy: string;
 	itemCount: number;
+	ownerName: string;
+	shared: boolean;
+	accessLevel: 'owner' | 'write' | 'read';
+};
+
+export type CollectionShare = {
+	userId: number;
+	username: string;
+	email: string;
+	displayName: string;
+	access: 'read' | 'write';
 };
 
 export type Item = {
@@ -331,6 +438,29 @@ export async function updateCollection(
 
 export async function deleteCollection(id: number): Promise<void> {
 	await mutate<{ ok: boolean }>(`/api/v1/collections/${id}`, 'DELETE');
+}
+
+export async function listCollectionShares(id: number): Promise<CollectionShare[]> {
+	const res = await fetch(`/api/v1/collections/${id}/shares`);
+	const body = await parseJSON<{ shares: CollectionShare[] }>(res);
+	return body.shares;
+}
+
+export async function shareCollection(
+	id: number,
+	identifier: string,
+	access: 'read' | 'write'
+): Promise<CollectionShare> {
+	const body = await mutate<{ share: CollectionShare }>(
+		`/api/v1/collections/${id}/shares`,
+		'POST',
+		{ identifier, access }
+	);
+	return body.share;
+}
+
+export async function unshareCollection(id: number, userId: number): Promise<void> {
+	await mutate<{ ok: boolean }>(`/api/v1/collections/${id}/shares/${userId}`, 'DELETE');
 }
 
 export async function getCollectionStats(id: number): Promise<Stats> {

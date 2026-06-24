@@ -44,6 +44,11 @@
 
 	const currency = $derived(collection?.currency ?? 'USD');
 
+	// Write access derived from the parent collection's access level.
+	const canWrite = $derived(
+		collection?.accessLevel === 'owner' || collection?.accessLevel === 'write'
+	);
+
 	// Edit item modal
 	let editModal = $state(false);
 	let eName = $state('');
@@ -371,20 +376,22 @@
 						>
 							<Icon name="info" class="h-5 w-5" />
 						</button>
-						<button
-							type="button"
-							class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
-							onclick={openEdit}
-						>
-							<Icon name="pencil" class="h-4 w-4" /> Edit
-						</button>
-						<button
-							type="button"
-							class="inline-flex items-center gap-1.5 rounded-md border border-rose-300 px-2.5 py-1.5 text-sm text-rose-600 hover:bg-rose-50 dark:border-rose-800 dark:text-rose-400 dark:hover:bg-rose-950/40"
-							onclick={() => (deleteItemModal = true)}
-						>
-							<Icon name="trash" class="h-4 w-4" />
-						</button>
+						{#if canWrite}
+							<button
+								type="button"
+								class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+								onclick={openEdit}
+							>
+								<Icon name="pencil" class="h-4 w-4" /> Edit
+							</button>
+							<button
+								type="button"
+								class="inline-flex items-center gap-1.5 rounded-md border border-rose-300 px-2.5 py-1.5 text-sm text-rose-600 hover:bg-rose-50 dark:border-rose-800 dark:text-rose-400 dark:hover:bg-rose-950/40"
+								onclick={() => (deleteItemModal = true)}
+							>
+								<Icon name="trash" class="h-4 w-4" />
+							</button>
+						{/if}
 					</div>
 				</div>
 
@@ -436,8 +443,8 @@
 			<h2 class="mb-2 text-lg font-semibold">Images</h2>
 			<ImageGallery
 				images={item.images}
-				onadd={onAddImage}
-				ondelete={onDeleteImage}
+				onadd={canWrite ? onAddImage : undefined}
+				ondelete={canWrite ? onDeleteImage : undefined}
 				{uploading}
 			/>
 		</div>
@@ -460,15 +467,17 @@
 					class="hidden"
 					onchange={onAttachmentChange}
 				/>
-				<button
-					type="button"
-					class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm hover:bg-slate-100 disabled:opacity-60 dark:border-slate-700 dark:hover:bg-slate-800"
-					onclick={() => attachInput?.click()}
-					disabled={uploadingAttachment}
-				>
-					<Icon name="plus" class="h-4 w-4" />
-					{uploadingAttachment ? 'Uploading…' : 'Add attachment'}
-				</button>
+				{#if canWrite}
+					<button
+						type="button"
+						class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm hover:bg-slate-100 disabled:opacity-60 dark:border-slate-700 dark:hover:bg-slate-800"
+						onclick={() => attachInput?.click()}
+						disabled={uploadingAttachment}
+					>
+						<Icon name="plus" class="h-4 w-4" />
+						{uploadingAttachment ? 'Uploading…' : 'Add attachment'}
+					</button>
+				{/if}
 			</div>
 			{#if item.attachments.length === 0}
 				<p class="text-sm text-slate-500">No attachments.</p>
@@ -494,13 +503,15 @@
 		<!-- Entries -->
 		<div class="flex items-center justify-between">
 			<h2 class="text-lg font-semibold">Entries</h2>
-			<button
-				type="button"
-				class="inline-flex items-center gap-1.5 rounded-md bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-700"
-				onclick={openCreateEntry}
-			>
-				<Icon name="plus" class="h-4 w-4" /> Add entry
-			</button>
+			{#if canWrite}
+				<button
+					type="button"
+					class="inline-flex items-center gap-1.5 rounded-md bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-700"
+					onclick={openCreateEntry}
+				>
+					<Icon name="plus" class="h-4 w-4" /> Add entry
+				</button>
+			{/if}
 		</div>
 
 		{#if entries.length === 0}
@@ -584,22 +595,24 @@
 								</td>
 								<td class="px-3 py-2">
 									<div class="flex items-center justify-end gap-1">
-										<button
-											type="button"
-											class="rounded p-1 text-slate-500 hover:bg-slate-200 hover:text-slate-700 dark:hover:bg-slate-700"
-											aria-label="Edit entry"
-											onclick={() => openEditEntry(entry)}
-										>
-											<Icon name="pencil" class="h-4 w-4" />
-										</button>
-										<button
-											type="button"
-											class="rounded p-1 text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-950/40"
-											aria-label="Delete entry"
-											onclick={() => (deleteEntryTarget = entry)}
-										>
-											<Icon name="trash" class="h-4 w-4" />
-										</button>
+										{#if canWrite}
+											<button
+												type="button"
+												class="rounded p-1 text-slate-500 hover:bg-slate-200 hover:text-slate-700 dark:hover:bg-slate-700"
+												aria-label="Edit entry"
+												onclick={() => openEditEntry(entry)}
+											>
+												<Icon name="pencil" class="h-4 w-4" />
+											</button>
+											<button
+												type="button"
+												class="rounded p-1 text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-950/40"
+												aria-label="Delete entry"
+												onclick={() => (deleteEntryTarget = entry)}
+											>
+												<Icon name="trash" class="h-4 w-4" />
+											</button>
+										{/if}
 									</div>
 								</td>
 							</tr>

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { loadLeaflet } from '$lib/leaflet';
 
 	type MapMarker = { lat: number; lng: number; label?: string; href?: string };
 
@@ -76,9 +77,7 @@
 	}
 
 	async function init() {
-		const leaflet = await import('leaflet');
-		await import('leaflet/dist/leaflet.css');
-		L = leaflet.default ?? leaflet;
+		L = await loadLeaflet();
 
 		const valid = validMarkers();
 		const center: [number, number] = valid.length ? [valid[0].lat, valid[0].lng] : [20, 0];

@@ -33,8 +33,8 @@ func run() error {
 		return err
 	}
 
-	logger := logging.New(cfg.LogLevel, cfg.IsDev())
-	logger.Info("starting capital-hub", "env", cfg.Env, "addr", cfg.Addr, "data_dir", cfg.DataDir)
+	logger := logging.New(cfg.LogLevel, false)
+	logger.Info("starting capital-hub", "addr", cfg.Addr, "data_dir", cfg.DataDir)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

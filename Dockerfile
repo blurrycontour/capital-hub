@@ -47,8 +47,7 @@ COPY --from=backend /out/capital-hub /usr/local/bin/capital-hub
 # or anonymous volume inherits this ownership on first mount.
 COPY --from=backend /data /data
 
-ENV CH_ENV=prod \
-    CH_ADDR=:8080 \
+ENV CH_ADDR=:8080 \
     CH_DATA_DIR=/data
 
 VOLUME ["/data"]

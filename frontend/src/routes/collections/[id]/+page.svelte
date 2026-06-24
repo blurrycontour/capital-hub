@@ -18,10 +18,14 @@
 		createItem,
 		formatCurrency,
 		CURRENCIES,
+		listCollectionShares,
+		shareCollection,
+		unshareCollection,
 		type Collection,
 		type Item,
 		type Stats,
-		type CustomField
+		type CustomField,
+		type CollectionShare
 	} from '$lib/api';
 
 	const collectionId = $derived(Number($page.params.id));
@@ -31,6 +35,12 @@
 	let stats = $state<Stats | null>(null);
 	let loading = $state(true);
 	let error = $state('');
+
+	// Permission helpers derived from the loaded collection.
+	const isOwner = $derived(collection?.accessLevel === 'owner');
+	const canWrite = $derived(
+		collection?.accessLevel === 'owner' || collection?.accessLevel === 'write'
+	);
 
 	// Edit collection modal.
 	let editModal = $state(false);
@@ -57,6 +67,55 @@
 
 	let deleteModal = $state(false);
 	let deleting = $state(false);
+
+	// Sharing state.
+	let shareModal = $state(false);
+	let shares = $state<CollectionShare[]>([]);
+	let sharesLoading = $state(false);
+	let shareIdentifier = $state('');
+	let shareAccess = $state<'read' | 'write'>('read');
+	let sharing = $state(false);
+	let shareError = $state('');
+
+	async function openShare() {
+		shareModal = true;
+		shareError = '';
+		shareIdentifier = '';
+		shareAccess = 'read';
+		sharesLoading = true;
+		try {
+			shares = await listCollectionShares(collectionId);
+		} catch (e) {
+			shareError = e instanceof Error ? e.message : 'Failed to load shares';
+		} finally {
+			sharesLoading = false;
+		}
+	}
+
+	async function addShare() {
+		if (!shareIdentifier.trim()) return;
+		sharing = true;
+		shareError = '';
+		try {
+			const created = await shareCollection(collectionId, shareIdentifier.trim(), shareAccess);
+			shares = [...shares.filter((s) => s.userId !== created.userId), created];
+			shareIdentifier = '';
+		} catch (e) {
+			shareError = e instanceof Error ? e.message : 'Failed to share collection';
+		} finally {
+			sharing = false;
+		}
+	}
+
+	async function removeShare(userId: number) {
+		shareError = '';
+		try {
+			await unshareCollection(collectionId, userId);
+			shares = shares.filter((s) => s.userId !== userId);
+		} catch (e) {
+			shareError = e instanceof Error ? e.message : 'Failed to remove share';
+		}
+	}
 
 	// Card vs. list view for items (persisted).
 	const VIEW_KEY = 'ch-view-items';
@@ -253,20 +312,37 @@
 					{/if}
 				</div>
 				<div class="flex shrink-0 items-center gap-2">
-					<button
-						type="button"
-						class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
-						onclick={openEdit}
-					>
-						<Icon name="pencil" class="h-4 w-4" /> Edit
-					</button>
-					<button
-						type="button"
-						class="inline-flex items-center gap-1.5 rounded-md border border-rose-300 px-2.5 py-1.5 text-sm text-rose-600 hover:bg-rose-50 dark:border-rose-800 dark:text-rose-400 dark:hover:bg-rose-950/40"
-						onclick={() => (deleteModal = true)}
-					>
-						<Icon name="trash" class="h-4 w-4" /> Delete
-					</button>
+					{#if isOwner}
+						<button
+							type="button"
+							class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+							onclick={openShare}
+						>
+							<Icon name="share" class="h-4 w-4" /> Share
+						</button>
+						<button
+							type="button"
+							class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+							onclick={openEdit}
+						>
+							<Icon name="pencil" class="h-4 w-4" /> Edit
+						</button>
+						<button
+							type="button"
+							class="inline-flex items-center gap-1.5 rounded-md border border-rose-300 px-2.5 py-1.5 text-sm text-rose-600 hover:bg-rose-50 dark:border-rose-800 dark:text-rose-400 dark:hover:bg-rose-950/40"
+							onclick={() => (deleteModal = true)}
+						>
+							<Icon name="trash" class="h-4 w-4" /> Delete
+						</button>
+					{:else}
+						<span
+							class="inline-flex items-center gap-1.5 rounded-md bg-violet-100 px-2.5 py-1.5 text-xs font-medium text-violet-700 dark:bg-violet-950/40 dark:text-violet-300"
+							title={`Shared by ${collection.ownerName}`}
+						>
+							<Icon name="users" class="h-4 w-4" />
+							Shared · {collection.accessLevel === 'write' ? 'Can edit' : 'Read only'}
+						</span>
+					{/if}
 				</div>
 			</div>
 
@@ -343,13 +419,15 @@
 						<Icon name="list" class="h-4 w-4" />
 					</button>
 				</div>
-				<button
-					type="button"
-					class="inline-flex items-center gap-1.5 rounded-md bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-700"
-					onclick={openCreateItem}
-				>
-					<Icon name="plus" class="h-4 w-4" /> Add item
-				</button>
+				{#if canWrite}
+					<button
+						type="button"
+						class="inline-flex items-center gap-1.5 rounded-md bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-700"
+						onclick={openCreateItem}
+					>
+						<Icon name="plus" class="h-4 w-4" /> Add item
+					</button>
+				{/if}
 			</div>
 		</div>
 
@@ -559,3 +637,90 @@
 		onconfirm={confirmDelete}
 	/>
 {/if}
+
+<!-- Share modal -->
+<Modal title="Share collection" bind:open={shareModal}>
+	<div class="space-y-4">
+		{#if shareError}
+			<p class="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
+				{shareError}
+			</p>
+		{/if}
+
+		<div class="space-y-2">
+			<label class="block text-sm font-medium" for="share-identifier">
+				Share with (username or email)
+			</label>
+			<div class="flex flex-col gap-2 sm:flex-row">
+				<input
+					id="share-identifier"
+					type="text"
+					bind:value={shareIdentifier}
+					placeholder="username or email"
+					class="flex-1 rounded-md border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900"
+				/>
+				<select
+					bind:value={shareAccess}
+					class="rounded-md border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900"
+				>
+					<option value="read">Read</option>
+					<option value="write">Write</option>
+				</select>
+				<button
+					type="button"
+					class="inline-flex items-center justify-center gap-1.5 rounded-md bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-50"
+					disabled={sharing || !shareIdentifier.trim()}
+					onclick={addShare}
+				>
+					<Icon name="share" class="h-4 w-4" /> Share
+				</button>
+			</div>
+		</div>
+
+		<div class="space-y-2">
+			<p class="text-sm font-medium">People with access</p>
+			{#if sharesLoading}
+				<p class="text-sm text-slate-500">Loading…</p>
+			{:else if shares.length === 0}
+				<p class="text-sm text-slate-500">Not shared with anyone yet.</p>
+			{:else}
+				<ul class="divide-y divide-slate-200 rounded-md border border-slate-200 dark:divide-slate-800 dark:border-slate-800">
+					{#each shares as s (s.userId)}
+						<li class="flex items-center justify-between gap-3 px-3 py-2">
+							<div class="min-w-0">
+								<p class="truncate text-sm font-medium">{s.displayName || s.username}</p>
+								<p class="truncate text-xs text-slate-500">{s.email || s.username}</p>
+							</div>
+							<div class="flex shrink-0 items-center gap-2">
+								<span
+									class="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+								>
+									{s.access === 'write' ? 'Write' : 'Read'}
+								</span>
+								<button
+									type="button"
+									class="rounded-md p-1 text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40"
+									title="Remove access"
+									aria-label="Remove access"
+									onclick={() => removeShare(s.userId)}
+								>
+									<Icon name="trash" class="h-4 w-4" />
+								</button>
+							</div>
+						</li>
+					{/each}
+				</ul>
+			{/if}
+		</div>
+	</div>
+
+	{#snippet footer()}
+		<button
+			type="button"
+			class="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+			onclick={() => (shareModal = false)}
+		>
+			Close
+		</button>
+	{/snippet}
+</Modal>

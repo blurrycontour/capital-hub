@@ -11,7 +11,7 @@ help: ## Show this help
 
 .PHONY: dev-backend
 dev-backend: ## Run the Go backend (dev mode)
-	cd backend && CH_ENV=dev CH_DATA_DIR=./.devdata go run ./cmd/server
+	cd backend && CH_DATA_DIR=./.devdata go run ./cmd/server
 
 .PHONY: dev-frontend
 dev-frontend: ## Run the SvelteKit dev server

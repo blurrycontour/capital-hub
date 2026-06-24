@@ -9,11 +9,9 @@ services:
     # Run as the host user that owns ./ch_data so the bind mount is writable.
     user: "1000:1000"
     environment:
-      CH_ENV: prod
       CH_ADDR: ":8080"
       # Externally reachable URL (used for OIDC redirects and email links).
       CH_BASE_URL: ${CH_BASE_URL:-http://localhost:8080}
-      # REQUIRED in prod: a long random string signing session cookies.
       CH_SESSION_SECRET: ${CH_SESSION_SECRET:?set CH_SESSION_SECRET in .env}
       CH_SESSION_TTL_HOURS: ${CH_SESSION_TTL_HOURS:-720}
       CH_DATA_DIR: /data

@@ -306,3 +306,108 @@ func boolToString(v bool) string {
 	}
 	return "0"
 }
+
+// ---------- OIDC settings ----------
+
+type oidcSettingsResponse struct {
+	Enabled           bool     `json:"enabled"`
+	IssuerURL         string   `json:"issuerUrl"`
+	ClientID          string   `json:"clientId"`
+	ClientSecretSet   bool     `json:"clientSecretSet"`
+	RedirectURL       string   `json:"redirectUrl"`
+	AdminGroup        string   `json:"adminGroup"`
+	ProviderName      string   `json:"providerName"`
+	AllowRegistration bool     `json:"allowRegistration"`
+	EnvFields         []string `json:"envFields"`
+}
+
+type oidcSettingsUpdate struct {
+	Enabled           bool   `json:"enabled"`
+	IssuerURL         string `json:"issuerUrl"`
+	ClientID          string `json:"clientId"`
+	ClientSecret      string `json:"clientSecret"`
+	RedirectURL       string `json:"redirectUrl"`
+	AdminGroup        string `json:"adminGroup"`
+	ProviderName      string `json:"providerName"`
+	AllowRegistration bool   `json:"allowRegistration"`
+}
+
+func (s *Server) handleAdminGetOIDCSettings(w http.ResponseWriter, r *http.Request) {
+	cfg, err := s.loadEffectiveOIDCConfig(r.Context())
+	if err != nil {
+		s.logger.ErrorContext(r.Context(), "load oidc settings failed", "error", err)
+		writeAPIError(w, http.StatusInternalServerError, "failed to load oidc settings")
+		return
+	}
+	writeJSON(w, http.StatusOK, &oidcSettingsResponse{
+		Enabled:           cfg.Enabled,
+		IssuerURL:         cfg.IssuerURL,
+		ClientID:          cfg.ClientID,
+		ClientSecretSet:   cfg.ClientSecret != "",
+		RedirectURL:       cfg.RedirectURL,
+		AdminGroup:        cfg.AdminGroup,
+		ProviderName:      cfg.ProviderName,
+		AllowRegistration: cfg.AllowRegistration,
+		EnvFields:         cfg.EnvFields,
+	})
+}
+
+func (s *Server) handleAdminUpdateOIDCSettings(w http.ResponseWriter, r *http.Request) {
+	var req oidcSettingsUpdate
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid json payload")
+		return
+	}
+
+	// Load current effective config to know which fields are env-controlled
+	// (those must not be overwritten in the DB).
+	effective, err := s.loadEffectiveOIDCConfig(r.Context())
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "failed to load oidc settings")
+		return
+	}
+	envSet := make(map[string]bool, len(effective.EnvFields))
+	for _, f := range effective.EnvFields {
+		envSet[f] = true
+	}
+
+	save := func(key, value string) {
+		if err2 := s.upsertSetting(r.Context(), key, value); err2 != nil && err == nil {
+			err = err2
+		}
+	}
+
+	if !envSet["enabled"] {
+		save("oidc_enabled", boolToString(req.Enabled))
+	}
+	if !envSet["issuerUrl"] {
+		save("oidc_issuer_url", strings.TrimSpace(req.IssuerURL))
+	}
+	if !envSet["clientId"] {
+		save("oidc_client_id", strings.TrimSpace(req.ClientID))
+	}
+	if !envSet["clientSecret"] && req.ClientSecret != "" {
+		save("oidc_client_secret", req.ClientSecret)
+	}
+	if !envSet["redirectUrl"] {
+		save("oidc_redirect_url", strings.TrimSpace(req.RedirectURL))
+	}
+	if !envSet["adminGroup"] {
+		save("oidc_admin_group", strings.TrimSpace(req.AdminGroup))
+	}
+	if !envSet["providerName"] {
+		save("oidc_provider_name", strings.TrimSpace(req.ProviderName))
+	}
+	if !envSet["allowRegistration"] {
+		save("oidc_allow_registration", boolToString(req.AllowRegistration))
+	}
+
+	if err != nil {
+		s.logger.ErrorContext(r.Context(), "save oidc settings failed", "error", err)
+		writeAPIError(w, http.StatusInternalServerError, "failed to save oidc settings")
+		return
+	}
+
+	// Re-read and return the updated effective config.
+	s.handleAdminGetOIDCSettings(w, r)
+}

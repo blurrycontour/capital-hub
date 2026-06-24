@@ -34,7 +34,7 @@ Run the backend (terminal 1):
 
 ```bash
 cd backend
-CH_ENV=dev CH_DATA_DIR=./.devdata go run ./cmd/server
+CH_DATA_DIR=./.devdata go run ./cmd/server
 # serves on http://localhost:8080
 ```
 
@@ -60,15 +60,26 @@ make docker          # build the container image
 
 All configuration is via environment variables (prefix `CH_`):
 
-| Variable             | Default                  | Notes                                          |
-| -------------------- | ------------------------ | ---------------------------------------------- |
-| `CH_ENV`             | `prod`                   | `dev` or `prod`                                |
-| `CH_ADDR`            | `:8080`                  | Listen address                                 |
-| `CH_BASE_URL`        | `http://localhost:8080`  | External URL (OIDC redirects, email links)     |
-| `CH_DATA_DIR`        | `./data`                 | SQLite database + uploads                       |
-| `CH_LOG_LEVEL`       | `info`                   | `debug`/`info`/`warn`/`error`                  |
-| `CH_SESSION_SECRET`  | —                        | Required in prod; signs session cookies        |
-| `CH_TRUSTED_PROXIES` | —                        | Comma-separated CIDRs to trust `X-Forwarded-*` |
+| Variable                      | Default                  | Notes                                                          |
+| ----------------------------- | ------------------------ | -------------------------------------------------------------- |
+| `CH_ADDR`                     | `:8080`                  | Listen address                                                 |
+| `CH_BASE_URL`                 | `http://localhost:8080`  | External URL (OIDC redirects, email links)                     |
+| `CH_DATA_DIR`                 | `./data`                 | SQLite database + uploads                                      |
+| `CH_LOG_LEVEL`                | `info`                   | `debug`/`info`/`warn`/`error`                                  |
+| `CH_SESSION_SECRET`           | —                        | Signs session cookies                                          |
+| `CH_TRUSTED_PROXIES`          | —                        | Comma-separated CIDRs to trust `X-Forwarded-*`                 |
+| `CH_OIDC_ENABLED`             | `false`                  | Enable OIDC/SSO login                                          |
+| `CH_OIDC_ISSUER_URL`          | —                        | Provider base URL                                              |
+| `CH_OIDC_CLIENT_ID`           | —                        | OIDC client ID                                                 |
+| `CH_OIDC_CLIENT_SECRET`       | —                        | OIDC client secret                                             |
+| `CH_OIDC_REDIRECT_URL`        | —                        | Must be `https://<host>/api/v1/auth/oidc/callback`             |
+| `CH_OIDC_ADMIN_GROUP`         | —                        | Group claim that grants Administrator role                     |
+| `CH_OIDC_PROVIDER_NAME`       | `OIDC`                   | Label on the login button ("Sign in with …")                   |
+| `CH_OIDC_ALLOW_REGISTRATION`  | `true`                   | `false` to prevent new account creation via OIDC              |
+
+OIDC can also be configured entirely through the admin UI (Settings → OIDC /
+SSO). Environment variables always take priority. See [docs/oidc.md](docs/oidc.md)
+for a full setup guide.
 
 ## Self-hosting (Docker Compose + Caddy)
 

@@ -6,7 +6,6 @@
 
 	const user = $derived(auth.user);
 
-	let status = $state<'loading' | string>('loading');
 	let notifications = $state<NotificationItem[]>([]);
 	let error = $state('');
 
@@ -32,9 +31,6 @@
 
 	onMount(async () => {
 		try {
-			const res = await fetch('/api/v1/health');
-			const data = await res.json();
-			status = data.status ?? 'unknown';
 			if (auth.user) {
 				const [notes, portfolio] = await Promise.all([
 					listNotifications(5),
@@ -47,7 +43,6 @@
 				totals = portfolio.totals;
 			}
 		} catch {
-			status = 'unreachable';
 			error = 'Failed to load dashboard data';
 		}
 	});
@@ -61,18 +56,6 @@
 			</h1>
 			<p class="text-sm text-slate-600 dark:text-slate-400">Here's an overview of your capitals!</p>
 		</div>
-		<span
-			class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium"
-			class:bg-emerald-100={status === 'ok'}
-			class:text-emerald-800={status === 'ok'}
-			class:bg-amber-100={status !== 'ok' && status !== 'loading'}
-			class:text-amber-800={status !== 'ok' && status !== 'loading'}
-			class:bg-slate-100={status === 'loading'}
-			class:text-slate-600={status === 'loading'}
-		>
-			<span class="h-1.5 w-1.5 rounded-full bg-current"></span>
-			Backend {status}
-		</span>
 	</header>
 
 	{#if error}

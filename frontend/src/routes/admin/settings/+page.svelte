@@ -50,6 +50,9 @@
 	let error = $state('');
 	let success = $state('');
 
+	// Backend health status.
+	let backendStatus = $state<'loading' | string>('loading');
+
 	// User editing state
 	let editingUser = $state<ApiUser | null>(null);
 	let editRole = $state('');
@@ -69,6 +72,13 @@
 
 	onMount(async () => {
 		await reload();
+		try {
+			const res = await fetch('/api/v1/health');
+			const data = await res.json();
+			backendStatus = data.status ?? 'unknown';
+		} catch {
+			backendStatus = 'unreachable';
+		}
 	});
 
 	async function reload() {
@@ -213,7 +223,21 @@
 
 <section class="mx-auto max-w-5xl space-y-6">
 	<header>
-		<h1 class="text-2xl font-bold">Admin Settings</h1>
+		<div class="flex flex-wrap items-center justify-between gap-2">
+			<h1 class="text-2xl font-bold">Admin Settings</h1>
+			<span
+				class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium"
+				class:bg-emerald-100={backendStatus === 'ok'}
+				class:text-emerald-800={backendStatus === 'ok'}
+				class:bg-amber-100={backendStatus !== 'ok' && backendStatus !== 'loading'}
+				class:text-amber-800={backendStatus !== 'ok' && backendStatus !== 'loading'}
+				class:bg-slate-100={backendStatus === 'loading'}
+				class:text-slate-600={backendStatus === 'loading'}
+			>
+				<span class="h-1.5 w-1.5 rounded-full bg-current"></span>
+				Backend {backendStatus}
+			</span>
+		</div>
 		<p class="text-sm text-slate-600 dark:text-slate-400">
 			Manage server configuration and user accounts.
 		</p>

@@ -188,7 +188,7 @@ type contextKey string
 
 const (
 	ctxUserKey     contextKey = "auth.user"
-	csrfCookieName            = "ch_csrf"
+	csrfCookieName string     = "ch_csrf"
 )
 
 func (s *Server) requireAuth(next http.Handler) http.Handler {

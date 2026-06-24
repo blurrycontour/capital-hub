@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { auth } from '$lib/auth.svelte';
-	import { changePassword, updateProfile, uploadAvatar } from '$lib/api';
+	import { changePassword, updateProfile, uploadAvatar, getPreferences, updatePreferences } from '$lib/api';
 	import Icon from '$lib/Icon.svelte';
+	import { onMount } from 'svelte';
 
 	const user = $derived(auth.user);
 
@@ -24,6 +25,34 @@
 	// Avatar upload state.
 	let avatarInput = $state<HTMLInputElement | null>(null);
 	let uploadingAvatar = $state(false);
+
+	// Dashboard stats preference.
+	let includeSharedInStats = $state(false);
+	let savingPrefs = $state(false);
+	let prefsError = $state('');
+
+	onMount(async () => {
+		try {
+			const prefs = await getPreferences();
+			includeSharedInStats = prefs.includeSharedInStats;
+		} catch {
+			/* keep default */
+		}
+	});
+
+	async function toggleIncludeShared() {
+		const next = !includeSharedInStats;
+		savingPrefs = true;
+		prefsError = '';
+		try {
+			const prefs = await updatePreferences({ includeSharedInStats: next });
+			includeSharedInStats = prefs.includeSharedInStats;
+		} catch (err) {
+			prefsError = err instanceof Error ? err.message : 'Failed to update preference';
+		} finally {
+			savingPrefs = false;
+		}
+	}
 
 	const initials = $derived.by(() => {
 		const source = (user?.displayName || user?.username || '').trim();
@@ -265,7 +294,7 @@
 			class="space-y-4 rounded-lg border border-slate-200 p-5 dark:border-slate-800"
 		>
 			<div class="flex items-center gap-2">
-				<Icon name="lock" class="h-5 w-5 text-slate-500" />
+				<Icon name="shield" class="h-5 w-5 text-slate-500" />
 				<h2 class="text-lg font-semibold">Change password</h2>
 			</div>
 
@@ -320,6 +349,49 @@
 				</button>
 			</div>
 		</form>
+
+		<!-- Preferences -->
+		<section class="space-y-4 rounded-lg border border-slate-200 p-5 dark:border-slate-800">
+			<div class="flex items-center gap-2">
+				<Icon name="dashboard" class="h-5 w-5 text-slate-500" />
+				<h2 class="text-lg font-semibold">Dashboard</h2>
+			</div>
+
+			{#if prefsError}
+				<div
+					class="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-700 dark:bg-red-950/40 dark:text-red-200"
+				>
+					{prefsError}
+				</div>
+			{/if}
+
+			<div class="flex items-start justify-between gap-4">
+				<div class="space-y-0.5">
+					<p class="text-sm font-medium">Include shared collections in statistics</p>
+					<p class="text-sm text-slate-500">
+						When enabled, collections shared with you also contribute to the totals on your
+						dashboard.
+					</p>
+				</div>
+				<button
+					type="button"
+					role="switch"
+					aria-checked={includeSharedInStats}
+					aria-label="Include shared collections in statistics"
+					disabled={savingPrefs}
+					onclick={toggleIncludeShared}
+					class={`relative mt-1 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${
+						includeSharedInStats ? 'bg-sky-600' : 'bg-slate-300 dark:bg-slate-700'
+					}`}
+				>
+					<span
+						class={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+							includeSharedInStats ? 'translate-x-5' : 'translate-x-0.5'
+						}`}
+					></span>
+				</button>
+			</div>
+		</section>
 	{:else}
 		<div class="rounded-lg border border-slate-200 p-4 text-sm text-slate-500 dark:border-slate-800">
 			Loading profile...

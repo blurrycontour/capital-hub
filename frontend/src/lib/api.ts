@@ -84,6 +84,19 @@ export async function uploadAvatar(file: File): Promise<ApiUser> {
 	return body.user;
 }
 
+export type UserPreferences = {
+	includeSharedInStats: boolean;
+};
+
+export async function getPreferences(): Promise<UserPreferences> {
+	const res = await fetch('/api/v1/auth/me/preferences');
+	return parseJSON<UserPreferences>(res);
+}
+
+export async function updatePreferences(prefs: UserPreferences): Promise<UserPreferences> {
+	return mutate<UserPreferences>('/api/v1/auth/me/preferences', 'PATCH', prefs);
+}
+
 export async function login(identifier: string, password: string): Promise<ApiUser> {
 	const res = await fetch('/api/v1/auth/login', {
 		method: 'POST',
@@ -292,6 +305,7 @@ export type Collection = {
 	ownerName: string;
 	shared: boolean;
 	accessLevel: 'owner' | 'write' | 'read';
+	shareCount: number;
 };
 
 export type CollectionShare = {

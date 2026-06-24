@@ -206,6 +206,37 @@ func (s *Service) SetAvatar(ctx context.Context, userID int64, avatarPath string
 	return &user, prev, nil
 }
 
+// StatsIncludeShared reports whether the user wants collections shared with them
+// to be counted in their dashboard portfolio totals.
+func (s *Service) StatsIncludeShared(ctx context.Context, userID int64) (bool, error) {
+	var v int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT include_shared_in_stats FROM users WHERE id = ? LIMIT 1`, userID,
+	).Scan(&v); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, errors.New("user not found")
+		}
+		return false, fmt.Errorf("load stats preference: %w", err)
+	}
+	return v == 1, nil
+}
+
+// SetStatsIncludeShared updates the dashboard "include shared collections"
+// preference for the user.
+func (s *Service) SetStatsIncludeShared(ctx context.Context, userID int64, include bool) error {
+	v := 0
+	if include {
+		v = 1
+	}
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE users SET include_shared_in_stats = ?, updated_at = datetime('now') WHERE id = ?`,
+		v, userID,
+	); err != nil {
+		return fmt.Errorf("set stats preference: %w", err)
+	}
+	return nil
+}
+
 // ListUsers returns all users ordered by creation date.
 func (s *Service) ListUsers(ctx context.Context) ([]User, error) {
 	rows, err := s.db.QueryContext(

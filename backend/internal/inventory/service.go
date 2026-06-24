@@ -147,6 +147,7 @@ type Collection struct {
 	OwnerName   string `json:"ownerName"`
 	Shared      bool   `json:"shared"`      // true when not owned by the requester
 	AccessLevel string `json:"accessLevel"` // "owner" | "write" | "read"
+	ShareCount  int    `json:"shareCount"`  // number of users this collection is shared with
 }
 
 // Item is a single asset within a collection.
@@ -211,7 +212,8 @@ SELECT c.id, c.name, c.description, c.currency,
        c.user_id,
        COALESCE(ou.display_name, ou.username, ''),
        ms.access,
-       (SELECT COUNT(*) FROM items i WHERE i.collection_id = c.id)
+       (SELECT COUNT(*) FROM items i WHERE i.collection_id = c.id),
+       (SELECT COUNT(*) FROM collection_shares cs WHERE cs.collection_id = c.id)
 FROM collections c
 LEFT JOIN users cu ON cu.id = c.created_by
 LEFT JOIN users uu ON uu.id = c.updated_by
@@ -228,7 +230,7 @@ func scanCollection(s interface{ Scan(...any) error }, userID int64) (Collection
 	if err := s.Scan(&c.ID, &c.Name, &c.Description, &c.Currency,
 		&c.LocationLat, &c.LocationLng, &c.LocationLabel, &customFields,
 		&c.CreatedAt, &c.UpdatedAt, &c.CreatedBy, &c.UpdatedBy,
-		&ownerID, &ownerName, &myAccess, &c.ItemCount); err != nil {
+		&ownerID, &ownerName, &myAccess, &c.ItemCount, &c.ShareCount); err != nil {
 		return Collection{}, err
 	}
 	c.CustomFields = unmarshalCustomFields(customFields)
@@ -1051,17 +1053,27 @@ type PortfolioSummary struct {
 }
 
 // PortfolioStats aggregates totals across every collection owned by the user.
-func (s *Service) PortfolioStats(ctx context.Context, userID int64) (*PortfolioSummary, error) {
+// When includeShared is true, collections shared with the user are counted too.
+func (s *Service) PortfolioStats(ctx context.Context, userID int64, includeShared bool) (*PortfolioSummary, error) {
 	summary := &PortfolioSummary{Totals: make([]CurrencyTotal, 0)}
+
+	// scope is the WHERE predicate (against collections aliased "c") selecting the
+	// collections that count toward the totals, plus its bound arguments.
+	scope := "c.user_id = ?"
+	args := []any{userID}
+	if includeShared {
+		scope = "(c.user_id = ? OR EXISTS (SELECT 1 FROM collection_shares cs WHERE cs.collection_id = c.id AND cs.user_id = ?))"
+		args = []any{userID, userID}
+	}
 
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT e.currency, SUM(e.amount), COUNT(*)
 		 FROM entries e
 		 JOIN items i ON i.id = e.item_id
 		 JOIN collections c ON c.id = i.collection_id
-		 WHERE c.user_id = ?
+		 WHERE `+scope+`
 		 GROUP BY e.currency ORDER BY e.currency`,
-		userID,
+		args...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("portfolio totals: %w", err)
@@ -1079,17 +1091,17 @@ func (s *Service) PortfolioStats(ctx context.Context, userID int64) (*PortfolioS
 	}
 
 	if err := s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM collections WHERE user_id = ?`, userID).Scan(&summary.CollectionCount); err != nil {
+		`SELECT COUNT(*) FROM collections c WHERE `+scope, args...).Scan(&summary.CollectionCount); err != nil {
 		return nil, fmt.Errorf("count collections: %w", err)
 	}
 	if err := s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM items i JOIN collections c ON c.id = i.collection_id WHERE c.user_id = ?`,
-		userID).Scan(&summary.ItemCount); err != nil {
+		`SELECT COUNT(*) FROM items i JOIN collections c ON c.id = i.collection_id WHERE `+scope,
+		args...).Scan(&summary.ItemCount); err != nil {
 		return nil, fmt.Errorf("count items: %w", err)
 	}
 	if err := s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM entries e JOIN items i ON i.id = e.item_id JOIN collections c ON c.id = i.collection_id WHERE c.user_id = ?`,
-		userID).Scan(&summary.EntryCount); err != nil {
+		`SELECT COUNT(*) FROM entries e JOIN items i ON i.id = e.item_id JOIN collections c ON c.id = i.collection_id WHERE `+scope,
+		args...).Scan(&summary.EntryCount); err != nil {
 		return nil, fmt.Errorf("count entries: %w", err)
 	}
 	return summary, nil
@@ -1117,10 +1129,11 @@ func (s *Service) Search(ctx context.Context, userID int64, query string) ([]Sea
 	results := make([]SearchResult, 0)
 
 	colRows, err := s.db.QueryContext(ctx,
-		`SELECT id, name, description FROM collections
-		 WHERE user_id = ? AND (name LIKE ? OR description LIKE ?)
-		 ORDER BY name COLLATE NOCASE ASC LIMIT 25`,
-		userID, like, like,
+		`SELECT c.id, c.name, c.description FROM collections c
+		 LEFT JOIN collection_shares s ON s.collection_id = c.id AND s.user_id = ?
+		 WHERE (c.user_id = ? OR s.access IS NOT NULL) AND (c.name LIKE ? OR c.description LIKE ?)
+		 ORDER BY c.name COLLATE NOCASE ASC LIMIT 25`,
+		userID, userID, like, like,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("search collections: %w", err)
@@ -1143,9 +1156,10 @@ func (s *Service) Search(ctx context.Context, userID int64, query string) ([]Sea
 	itemRows, err := s.db.QueryContext(ctx,
 		`SELECT i.id, i.name, i.description, c.id, c.name
 		 FROM items i JOIN collections c ON c.id = i.collection_id
-		 WHERE c.user_id = ? AND (i.name LIKE ? OR i.description LIKE ?)
+		 LEFT JOIN collection_shares s ON s.collection_id = c.id AND s.user_id = ?
+		 WHERE (c.user_id = ? OR s.access IS NOT NULL) AND (i.name LIKE ? OR i.description LIKE ?)
 		 ORDER BY i.name COLLATE NOCASE ASC LIMIT 50`,
-		userID, like, like,
+		userID, userID, like, like,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("search items: %w", err)

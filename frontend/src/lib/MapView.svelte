@@ -47,10 +47,14 @@
 			mk.addTo(layerGroup);
 			latlngs.push([m.lat, m.lng]);
 		}
+		// `animate: false` avoids Leaflet's requestAnimationFrame-driven pan/zoom
+		// transitions. Those can conflict with another Leaflet map being torn down
+		// in the same tick (e.g. a LocationPicker inside a modal that just closed)
+		// and lock up the main thread.
 		if (latlngs.length > 1) {
-			map.fitBounds(latlngs, { padding: [30, 30], maxZoom: 16 });
+			map.fitBounds(latlngs, { padding: [30, 30], maxZoom: 16, animate: false });
 		} else if (latlngs.length === 1) {
-			map.setView(latlngs[0], zoom);
+			map.setView(latlngs[0], zoom, { animate: false });
 		}
 	}
 
@@ -107,7 +111,11 @@
 		clearTimeout(hintTimer);
 		mapEl?.removeEventListener('wheel', onWheel);
 		mapEl?.removeEventListener('touchstart', onTouchStart);
-		map?.remove();
+		try {
+			map?.remove();
+		} catch {
+			/* ignore Leaflet teardown errors */
+		}
 		map = null;
 	});
 </script>

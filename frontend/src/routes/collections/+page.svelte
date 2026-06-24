@@ -188,6 +188,22 @@
 										<Icon name="users" class="h-3 w-3" />
 										Shared
 									</span>
+								{:else if c.shareCount > 0}
+									<span
+										class="inline-flex shrink-0 items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700 dark:bg-violet-950/40 dark:text-violet-300"
+										title={`Shared with ${c.shareCount} ${c.shareCount === 1 ? 'person' : 'people'}`}
+									>
+										<Icon name="users" class="h-3 w-3" />
+										Shared
+									</span>
+								{:else}
+									<span
+										class="inline-flex shrink-0 items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+										title="Private — only visible to you"
+									>
+										<Icon name="user" class="h-3 w-3" />
+										Private
+									</span>
 								{/if}
 								{#if c.locationLat != null && c.locationLng != null}
 									<Icon name="map-pin" class="h-3.5 w-3.5 shrink-0 text-slate-400" />
@@ -226,6 +242,22 @@
 									>
 										<Icon name="users" class="h-3 w-3" />
 										Shared
+									</span>
+								{:else if c.shareCount > 0}
+									<span
+										class="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700 dark:bg-violet-950/40 dark:text-violet-300"
+										title={`Shared with ${c.shareCount} ${c.shareCount === 1 ? 'person' : 'people'}`}
+									>
+										<Icon name="users" class="h-3 w-3" />
+										Shared
+									</span>
+								{:else}
+									<span
+										class="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+										title="Private — only visible to you"
+									>
+										<Icon name="user" class="h-3 w-3" />
+										Private
 									</span>
 								{/if}
 								<span

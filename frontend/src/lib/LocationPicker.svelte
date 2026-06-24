@@ -112,7 +112,11 @@
 	});
 
 	onDestroy(() => {
-		map?.remove();
+		try {
+			map?.remove();
+		} catch {
+			/* ignore Leaflet teardown errors */
+		}
 		map = null;
 	});
 </script>

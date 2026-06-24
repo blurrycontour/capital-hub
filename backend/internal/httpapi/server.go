@@ -79,6 +79,8 @@ func (s *Server) routes() error {
 			authRouter.With(s.requireAuth, s.requireCSRF).Patch("/me", s.handleUpdateMe)
 			authRouter.With(s.requireAuth, s.requireCSRF).Post("/me/avatar", s.handleUploadAvatar)
 			authRouter.With(s.requireAuth, s.requireCSRF).Post("/me/password", s.handleChangePassword)
+			authRouter.With(s.requireAuth).Get("/me/preferences", s.handleGetPreferences)
+			authRouter.With(s.requireAuth, s.requireCSRF).Patch("/me/preferences", s.handleUpdatePreferences)
 		})
 
 		api.Route("/notifications", func(n chi.Router) {

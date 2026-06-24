@@ -75,6 +75,44 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"user": user})
 }
 
+type preferencesResponse struct {
+	IncludeSharedInStats bool `json:"includeSharedInStats"`
+}
+
+func (s *Server) handleGetPreferences(w http.ResponseWriter, r *http.Request) {
+	user := userFromContext(r)
+	if user == nil {
+		writeAPIError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	include, err := s.auth.StatsIncludeShared(r.Context(), user.ID)
+	if err != nil {
+		s.logger.ErrorContext(r.Context(), "load preferences", "error", err)
+		writeAPIError(w, http.StatusInternalServerError, "failed to load preferences")
+		return
+	}
+	writeJSON(w, http.StatusOK, preferencesResponse{IncludeSharedInStats: include})
+}
+
+func (s *Server) handleUpdatePreferences(w http.ResponseWriter, r *http.Request) {
+	user := userFromContext(r)
+	if user == nil {
+		writeAPIError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	var req preferencesResponse
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid json payload")
+		return
+	}
+	if err := s.auth.SetStatsIncludeShared(r.Context(), user.ID, req.IncludeSharedInStats); err != nil {
+		s.logger.ErrorContext(r.Context(), "update preferences", "error", err)
+		writeAPIError(w, http.StatusInternalServerError, "failed to update preferences")
+		return
+	}
+	writeJSON(w, http.StatusOK, preferencesResponse{IncludeSharedInStats: req.IncludeSharedInStats})
+}
+
 type updateProfileRequest struct {
 	DisplayName string `json:"displayName"`
 	Email       string `json:"email"`

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount, onDestroy, tick } from 'svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import Icon from '$lib/Icon.svelte';
@@ -182,7 +182,7 @@
 		savingItem = true;
 		error = '';
 		try {
-			item = await updateItem(item.id, {
+			const updated = await updateItem(item.id, {
 				name: eName.trim(),
 				description: eDescription.trim(),
 				locationLat: eLat,
@@ -192,8 +192,14 @@
 				attachments: item.attachments,
 				customFields: eFields.filter((f) => f.label.trim() || f.value.trim())
 			});
-			updateTrail();
+			// Close the modal (tearing down its LocationPicker map) and let that
+			// flush complete before reassigning `item`, which re-renders the
+			// page-level location map. Doing both in one tick can make two Leaflet
+			// maps fight over the shared animation frame and freeze the page.
 			editModal = false;
+			await tick();
+			item = updated;
+			updateTrail();
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to save item';
 		} finally {
@@ -651,9 +657,7 @@
 		</div>
 		<div>
 			<span class="text-sm text-slate-600 dark:text-slate-400">Location</span>
-			{#if editModal}
-				<LocationPicker bind:lat={eLat} bind:lng={eLng} bind:label={eLabel} />
-			{/if}
+			<LocationPicker bind:lat={eLat} bind:lng={eLng} bind:label={eLabel} />
 		</div>
 	</div>
 	{#snippet footer()}

@@ -644,7 +644,12 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handlePortfolioStats(w http.ResponseWriter, r *http.Request) {
 	user := userFromContext(r)
-	stats, err := s.inventory.PortfolioStats(r.Context(), user.ID)
+	includeShared, err := s.auth.StatsIncludeShared(r.Context(), user.ID)
+	if err != nil {
+		s.writeInventoryError(w, r, err, "portfolio stats")
+		return
+	}
+	stats, err := s.inventory.PortfolioStats(r.Context(), user.ID, includeShared)
 	if err != nil {
 		s.writeInventoryError(w, r, err, "portfolio stats")
 		return

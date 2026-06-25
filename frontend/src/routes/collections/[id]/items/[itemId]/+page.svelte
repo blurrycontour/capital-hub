@@ -203,13 +203,15 @@
 				attachments: item.attachments,
 				customFields: eFields.filter((f) => f.label.trim() || f.value.trim())
 			});
-			// Close the modal first (its own flush) so it always dismisses, then
-			// reassign `item`. The page MapView renders on the next animation frame,
-			// so the update reflects without the modal map teardown freezing the UI.
-			editModal = false;
-			await tick();
+			// Reflect the change first while the modal is still open, so this flush
+			// contains no Leaflet teardown. Then close the modal on the next tick, so
+			// that flush has no data change to collide with. This is what lets the
+			// collection page update cleanly, and fixes both the stale-page and
+			// modal-won't-close regressions.
 			item = updated;
 			updateTrail();
+			await tick();
+			editModal = false;
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to save item';
 		} finally {
@@ -264,13 +266,13 @@
 		moveError = '';
 		try {
 			const updated = await moveItem(item.id, moveTargetId);
-			// Close the modal first (its own flush) so it always dismisses, then
-			// reassign the item/collection and update the URL.
-			moveModal = false;
-			await tick();
+			// Reflect the move first, then close the modal on the next tick (see the
+			// note in saveItem for why the ordering matters).
 			item = updated;
 			collection = await getCollection(updated.collectionId);
 			updateTrail();
+			await tick();
+			moveModal = false;
 			// Keep the item open but reflect its new collection in the URL.
 			await goto(`/collections/${updated.collectionId}/items/${updated.id}`, {
 				replaceState: true,

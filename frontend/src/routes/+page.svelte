@@ -28,10 +28,10 @@
 	);
 
 	const cards: { label: string; icon: IconName; value: string }[] = $derived([
-		{ label: 'Collections', icon: 'collections', value: String(summary.collections) },
-		{ label: 'Total items', icon: 'cube', value: String(summary.items) },
+		{ label: 'Total Collections', icon: 'collections', value: String(summary.collections) },
+		{ label: 'Total Items', icon: 'cube', value: String(summary.items) },
 		{
-			label: 'Total value',
+			label: 'Total Value',
 			icon: 'currency',
 			value: valueLabel
 		}
@@ -109,13 +109,13 @@
 	<!-- Recently modified items -->
 	{#if recentItems.length > 0}
 		<div class="space-y-3 rounded-lg border border-slate-200 p-5 dark:border-slate-800">
-			<h2 class="text-lg font-semibold">Recently added or edited</h2>
+			<h2 class="text-lg font-semibold">Recent Activity</h2>
 			<ul class="grid gap-2 sm:grid-cols-2">
 				{#each recentItems as it (it.id)}
-					<li>
+					<li class="min-w-0">
 						<a
 							href={`/collections/${it.collectionId}/items/${it.id}`}
-							class="flex items-center gap-3 rounded-md border border-slate-200 p-2.5 transition hover:border-sky-400 hover:shadow-sm dark:border-slate-800 dark:hover:border-sky-600"
+							class="flex min-w-0 items-center gap-3 rounded-md border border-slate-200 p-2.5 transition hover:border-sky-400 hover:shadow-sm dark:border-slate-800 dark:hover:border-sky-600"
 						>
 							{#if it.imagePath}
 								<img

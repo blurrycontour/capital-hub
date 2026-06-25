@@ -178,11 +178,24 @@
 							<Icon name="collections" class="h-4 w-4" />
 						</span>
 						<div class="min-w-0 flex-1">
-							<div class="flex items-center gap-2">
-								<span class="truncate font-medium">{c.name}</span>
+							<p class="truncate font-medium">{c.name}</p>
+							{#if c.description}
+								<p class="truncate text-sm text-slate-500">{c.description}</p>
+							{/if}
+							<div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+								<span class="inline-flex items-center gap-1">
+									<Icon name="cube" class="h-3.5 w-3.5" />
+									{c.itemCount} items
+								</span>
+								<span
+									class="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+								>
+									<Icon name="currency" class="h-3.5 w-3.5" />
+									{c.currency}
+								</span>
 								{#if c.shared}
 									<span
-										class="inline-flex shrink-0 items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700 dark:bg-violet-950/40 dark:text-violet-300"
+										class="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 font-medium text-violet-700 dark:bg-violet-950/40 dark:text-violet-300"
 										title={`Shared by ${c.ownerName} (${c.accessLevel === 'write' ? 'can edit' : 'read only'})`}
 									>
 										<Icon name="users" class="h-3 w-3" />
@@ -190,7 +203,7 @@
 									</span>
 								{:else if c.shareCount > 0}
 									<span
-										class="inline-flex shrink-0 items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700 dark:bg-violet-950/40 dark:text-violet-300"
+										class="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 font-medium text-violet-700 dark:bg-violet-950/40 dark:text-violet-300"
 										title={`Shared with ${c.shareCount} ${c.shareCount === 1 ? 'person' : 'people'}`}
 									>
 										<Icon name="users" class="h-3 w-3" />
@@ -198,7 +211,7 @@
 									</span>
 								{:else}
 									<span
-										class="inline-flex shrink-0 items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+										class="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400"
 										title="Private — only visible to you"
 									>
 										<Icon name="user" class="h-3 w-3" />
@@ -206,20 +219,13 @@
 									</span>
 								{/if}
 								{#if c.locationLat != null && c.locationLng != null}
-									<Icon name="map-pin" class="h-3.5 w-3.5 shrink-0 text-slate-400" />
+									<span class="inline-flex items-center gap-1">
+										<Icon name="map-pin" class="h-3.5 w-3.5" />
+										{c.locationLabel || 'Located'}
+									</span>
 								{/if}
 							</div>
-							{#if c.description}
-								<p class="truncate text-sm text-slate-500">{c.description}</p>
-							{/if}
 						</div>
-						<span class="shrink-0 text-xs text-slate-500">{c.itemCount} items</span>
-						<span
-							class="inline-flex shrink-0 items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300"
-						>
-							<Icon name="currency" class="h-3.5 w-3.5" />
-							{c.currency}
-						</span>
 					</a>
 				</li>
 			{/each}
@@ -232,46 +238,11 @@
 						href={`/collections/${c.id}`}
 						class="flex h-full flex-col rounded-lg border border-slate-200 p-4 transition hover:border-sky-400 hover:shadow-sm dark:border-slate-800 dark:hover:border-sky-600"
 					>
-						<div class="flex items-start justify-between gap-2">
-							<h2 class="font-semibold">{c.name}</h2>
-							<div class="flex shrink-0 items-center gap-1">
-								{#if c.shared}
-									<span
-										class="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700 dark:bg-violet-950/40 dark:text-violet-300"
-										title={`Shared by ${c.ownerName} (${c.accessLevel === 'write' ? 'can edit' : 'read only'})`}
-									>
-										<Icon name="users" class="h-3 w-3" />
-										Shared
-									</span>
-								{:else if c.shareCount > 0}
-									<span
-										class="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700 dark:bg-violet-950/40 dark:text-violet-300"
-										title={`Shared with ${c.shareCount} ${c.shareCount === 1 ? 'person' : 'people'}`}
-									>
-										<Icon name="users" class="h-3 w-3" />
-										Shared
-									</span>
-								{:else}
-									<span
-										class="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400"
-										title="Private — only visible to you"
-									>
-										<Icon name="user" class="h-3 w-3" />
-										Private
-									</span>
-								{/if}
-								<span
-									class="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300"
-								>
-									<Icon name="currency" class="h-3.5 w-3.5" />
-									{c.currency}
-								</span>
-							</div>
-						</div>
+						<h2 class="break-words font-semibold">{c.name}</h2>
 						{#if c.description}
-							<p class="mt-1 line-clamp-3 flex-1 text-sm text-slate-500">{c.description}</p>
+							<p class="mt-1 line-clamp-3 flex-1 overflow-hidden break-words text-sm text-slate-500">{c.description}</p>
 						{/if}
-						<div class="mt-3 flex items-center gap-3 text-xs text-slate-500">
+						<div class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-slate-500">
 							<span class="inline-flex items-center gap-1">
 								<Icon name="cube" class="h-3.5 w-3.5" />
 								{c.itemCount} items
@@ -280,6 +251,37 @@
 								<span class="inline-flex items-center gap-1">
 									<Icon name="map-pin" class="h-3.5 w-3.5" />
 									{c.locationLabel || 'Located'}
+								</span>
+							{/if}
+							<span
+								class="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+							>
+								<Icon name="currency" class="h-3.5 w-3.5" />
+								{c.currency}
+							</span>
+							{#if c.shared}
+								<span
+									class="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 font-medium text-violet-700 dark:bg-violet-950/40 dark:text-violet-300"
+									title={`Shared by ${c.ownerName} (${c.accessLevel === 'write' ? 'can edit' : 'read only'})`}
+								>
+									<Icon name="users" class="h-3 w-3" />
+									Shared
+								</span>
+							{:else if c.shareCount > 0}
+								<span
+									class="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 font-medium text-violet-700 dark:bg-violet-950/40 dark:text-violet-300"
+									title={`Shared with ${c.shareCount} ${c.shareCount === 1 ? 'person' : 'people'}`}
+								>
+									<Icon name="users" class="h-3 w-3" />
+									Shared
+								</span>
+							{:else}
+								<span
+									class="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+									title="Private — only visible to you"
+								>
+									<Icon name="user" class="h-3 w-3" />
+									Private
 								</span>
 							{/if}
 						</div>

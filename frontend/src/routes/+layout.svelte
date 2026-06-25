@@ -68,6 +68,12 @@
 
 	const isLoginRoute = $derived($page.url.pathname.startsWith('/login'));
 	const showChrome = $derived(auth.isAuthenticated && !isLoginRoute);
+	// Collapse to first + … + last-two when the trail is deep, keeping the bar compact.
+	const displayCrumbs = $derived.by(() =>
+		breadcrumbs.length > 3
+			? [breadcrumbs[0], { label: '\u2026', href: '' }, ...breadcrumbs.slice(-2)]
+			: breadcrumbs
+	);
 
 	onMount(() => {
 		theme = getInitialTheme();
@@ -298,19 +304,23 @@
 							<Icon name="panel-left" class="h-5 w-5" />
 						</button>
 						<nav class="flex min-w-0 items-center gap-1 text-sm" aria-label="Breadcrumb">
-							{#each breadcrumbs as crumb, i (crumb.href)}
+							{#each displayCrumbs as crumb, i (i)}
 								{#if i > 0}
 									<Icon name="chevron-divider" class="h-3.5 w-3.5 shrink-0 text-slate-400" />
 								{/if}
-								{#if i === breadcrumbs.length - 1}
-									<span class="truncate font-medium text-slate-900 dark:text-slate-100">{crumb.label}</span>
+								{#if crumb.href === ''}
+									<span class="shrink-0 select-none text-slate-400" aria-hidden="true">…</span>
+								{:else if i === displayCrumbs.length - 1}
+									<span
+										class="max-w-[10rem] truncate font-medium text-slate-900 dark:text-slate-100"
+										title={crumb.label}
+									>{crumb.label}</span>
 								{:else}
 									<a
 										href={crumb.href}
-										class="shrink-0 rounded px-1 text-slate-500 hover:text-sky-600 hover:underline"
-									>
-										{crumb.label}
-									</a>
+										class="max-w-[8rem] shrink-0 truncate rounded px-1 text-slate-500 hover:text-sky-600 hover:underline"
+										title={crumb.label}
+									>{crumb.label}</a>
 								{/if}
 							{/each}
 						</nav>

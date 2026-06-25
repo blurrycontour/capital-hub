@@ -347,13 +347,30 @@
 			</div>
 
 			<div class="mt-3 flex flex-wrap items-center gap-2">
-				<h1 class="break-words text-xl font-semibold">{collection.name}</h1>
+				<h1 class="w-full break-words text-xl font-semibold">{collection.name}</h1>
 				<span
 					class="inline-flex shrink-0 items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300"
 				>
 					<Icon name="currency" class="h-3.5 w-3.5" />
 					{collection.currency}
 				</span>
+				{#if collection.shared}
+					<span
+						class="inline-flex shrink-0 items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700 dark:bg-violet-950/40 dark:text-violet-300"
+						title={`Shared by ${collection.ownerName} (${collection.accessLevel === 'write' ? 'can edit' : 'read only'})`}
+					>
+						<Icon name="users" class="h-3.5 w-3.5" />
+						Shared by {collection.ownerName}
+					</span>
+				{:else if collection.shareCount > 0}
+					<span
+						class="inline-flex shrink-0 items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700 dark:bg-violet-950/40 dark:text-violet-300"
+						title={`Shared with ${collection.shareCount} ${collection.shareCount === 1 ? 'person' : 'people'}`}
+					>
+						<Icon name="users" class="h-3.5 w-3.5" />
+						Shared · {collection.shareCount} {collection.shareCount === 1 ? 'person' : 'people'}
+					</span>
+				{/if}
 			</div>
 
 			{#if collection.description}

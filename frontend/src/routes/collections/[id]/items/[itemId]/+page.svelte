@@ -59,6 +59,7 @@
 	let eLat = $state<number | null>(null);
 	let eLng = $state<number | null>(null);
 	let eLabel = $state('');
+	let eUseLocation = $state(false);
 	let eFields = $state<CustomField[]>([]);
 	let savingItem = $state(false);
 
@@ -154,13 +155,18 @@
 	}
 
 	// Nest the item under its collection: Collections > <collection> > Items > <item>.
-	function updateTrail() {
+	// Must be async and await tick() before calling setTrail. Calling setTrail
+	// synchronously in the same flush as a modal close triggers a layout re-render
+	// that can race with Leaflet teardown (LocationPicker onDestroy rAF callbacks)
+	// and freeze the main thread. tick() ensures the current flush — including any
+	// DOM mutations and Leaflet cleanup — fully completes before the trail updates.
+	async function updateTrail() {
+		await tick();
 		if (!item) return;
 		const collectionId = item.collectionId;
 		breadcrumbs.setTrail([
 			{ label: 'Collections', href: '/collections' },
 			{ label: collection?.name ?? 'Collection', href: `/collections/${collectionId}` },
-			{ label: 'Items', href: `/collections/${collectionId}` },
 			{ label: item.name, href: `/collections/${collectionId}/items/${itemId}` }
 		]);
 	}
@@ -184,6 +190,7 @@
 		eLat = item.locationLat;
 		eLng = item.locationLng;
 		eLabel = item.locationLabel;
+		eUseLocation = item.locationLat != null && item.locationLng != null;
 		eFields = item.customFields.map((f) => ({ ...f }));
 		editModal = true;
 	}
@@ -193,25 +200,18 @@
 		savingItem = true;
 		error = '';
 		try {
-			const updated = await updateItem(item.id, {
+			item = await updateItem(item.id, {
 				name: eName.trim(),
 				description: eDescription.trim(),
-				locationLat: eLat,
-				locationLng: eLng,
-				locationLabel: eLabel.trim(),
+				locationLat: eUseLocation ? eLat : null,
+				locationLng: eUseLocation ? eLng : null,
+				locationLabel: eUseLocation ? eLabel.trim() : '',
 				images: item.images,
 				attachments: item.attachments,
 				customFields: eFields.filter((f) => f.label.trim() || f.value.trim())
 			});
-			// Reflect the change first while the modal is still open, so this flush
-			// contains no Leaflet teardown. Then close the modal on the next tick, so
-			// that flush has no data change to collide with. This is what lets the
-			// collection page update cleanly, and fixes both the stale-page and
-			// modal-won't-close regressions.
-			item = updated;
-			updateTrail();
-			await tick();
 			editModal = false;
+			updateTrail(); // fire-and-forget: runs after tick(), past the modal-close flush
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to save item';
 		} finally {
@@ -270,8 +270,6 @@
 			// note in saveItem for why the ordering matters).
 			item = updated;
 			collection = await getCollection(updated.collectionId);
-			updateTrail();
-			await tick();
 			moveModal = false;
 			// Keep the item open but reflect its new collection in the URL.
 			await goto(`/collections/${updated.collectionId}/items/${updated.id}`, {
@@ -279,6 +277,7 @@
 				noScroll: true,
 				keepFocus: true
 			});
+			updateTrail();
 		} catch (e) {
 			moveError = e instanceof Error ? e.message : 'Failed to move item';
 		} finally {
@@ -496,7 +495,7 @@
 				<!-- Custom fields -->
 				{#if item.customFields.length > 0}
 					<dl class="grid gap-x-6 gap-y-1 sm:grid-cols-2">
-						{#each item.customFields as field (field.label + field.value)}
+						{#each item.customFields as field, i (i)}
 							<div
 								class="flex justify-between gap-3 border-b border-slate-100 py-1 text-sm dark:border-slate-800"
 							>
@@ -737,8 +736,15 @@
 			</div>
 		</div>
 		<div>
-			<span class="text-sm text-slate-600 dark:text-slate-400">Location</span>
-			<LocationPicker bind:lat={eLat} bind:lng={eLng} bind:label={eLabel} />
+			<label class="flex items-center gap-2 text-sm">
+				<input type="checkbox" bind:checked={eUseLocation} class="rounded" />
+				<span class="text-slate-600 dark:text-slate-400">Set a location</span>
+			</label>
+			{#if eUseLocation}
+				<div class="mt-2">
+					<LocationPicker bind:lat={eLat} bind:lng={eLng} bind:label={eLabel} />
+				</div>
+			{/if}
 		</div>
 	</div>
 	{#snippet footer()}

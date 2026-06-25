@@ -508,12 +508,20 @@ export async function createItem(collectionId: number, payload: ItemInput): Prom
 }
 
 export async function updateItem(id: number, payload: ItemInput): Promise<Item> {
-	const body = await mutate<{ item: Item }>(`/api/v1/items/${id}`, 'PATCH', payload);
+	const body = await mutate<{ item: Item }>(
+		`/api/v1/items/${id}`,
+		'PATCH',
+		payload
+	);
 	return body.item;
 }
 
 export async function moveItem(id: number, collectionId: number): Promise<Item> {
-	const body = await mutate<{ item: Item }>(`/api/v1/items/${id}/move`, 'POST', { collectionId });
+	const body = await mutate<{ item: Item }>(
+		`/api/v1/items/${id}/move`,
+		'POST',
+		{ collectionId }
+	);
 	return body.item;
 }
 

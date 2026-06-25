@@ -8,6 +8,7 @@
 	import CustomFieldsEditor from '$lib/CustomFieldsEditor.svelte';
 	import MapView from '$lib/MapView.svelte';
 	import ConfirmDeleteModal from '$lib/ConfirmDeleteModal.svelte';
+	import Dropdown from '$lib/Dropdown.svelte';
 	import { breadcrumbs } from '$lib/breadcrumb.svelte';
 	import {
 		getCollection,
@@ -67,6 +68,9 @@
 
 	let deleteModal = $state(false);
 	let deleting = $state(false);
+
+	// Metadata modal (created/updated info).
+	let metadataModal = $state(false);
 
 	// Sharing state.
 	let shareModal = $state(false);
@@ -270,13 +274,6 @@
 </script>
 
 <section class="mx-auto max-w-5xl space-y-6">
-	<a
-		href="/collections"
-		class="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
-	>
-		<Icon name="chevron-left" class="h-4 w-4" /> All collections
-	</a>
-
 	{#if error}
 		<div
 			class="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
@@ -290,50 +287,53 @@
 	{:else if collection}
 		<!-- Header -->
 		<div class="rounded-lg border border-slate-200 p-5 dark:border-slate-800">
-			<div class="flex items-start justify-between gap-3">
-				<div class="min-w-0">
-					<div class="flex flex-wrap items-center gap-2">
-						<h1 class="text-xl font-semibold">{collection.name}</h1>
-						<span
-							class="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300"
-						>
-							<Icon name="currency" class="h-3.5 w-3.5" />
-							{collection.currency}
-						</span>
-					</div>
-					{#if collection.description}
-						<p class="mt-1 text-sm text-slate-600 dark:text-slate-400">{collection.description}</p>
-					{/if}
-					{#if collection.locationLat != null && collection.locationLng != null}
-						<p class="mt-2 inline-flex items-center gap-1 text-xs text-slate-500">
-							<Icon name="map-pin" class="h-3.5 w-3.5" />
-							{collection.locationLabel || 'Located'}
-						</p>
-					{/if}
+			<div class="flex items-center justify-between gap-3">
+				<div class="flex min-w-0 items-center gap-2">
+					<span
+						class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300"
+					>
+						<Icon name="collections" class="h-5 w-5" />
+					</span>
+					<span class="text-xs font-semibold uppercase tracking-wide text-slate-400"
+						>Collection</span
+					>
 				</div>
 				<div class="flex shrink-0 items-center gap-2">
+					<button
+						type="button"
+						class="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800"
+						aria-label="Collection metadata"
+						onclick={() => (metadataModal = true)}
+					>
+						<Icon name="info" class="h-5 w-5" />
+					</button>
 					{#if isOwner}
-						<button
-							type="button"
-							class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
-							onclick={openShare}
-						>
-							<Icon name="share" class="h-4 w-4" /> Share
-						</button>
-						<button
-							type="button"
-							class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
-							onclick={openEdit}
-						>
-							<Icon name="pencil" class="h-4 w-4" /> Edit
-						</button>
-						<button
-							type="button"
-							class="inline-flex items-center gap-1.5 rounded-md border border-rose-300 px-2.5 py-1.5 text-sm text-rose-600 hover:bg-rose-50 dark:border-rose-800 dark:text-rose-400 dark:hover:bg-rose-950/40"
-							onclick={() => (deleteModal = true)}
-						>
-							<Icon name="trash" class="h-4 w-4" /> Delete
-						</button>
+						<Dropdown label="Options">
+							<button
+								type="button"
+								role="menuitem"
+								class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
+								onclick={openShare}
+							>
+								<Icon name="share" class="h-4 w-4 text-slate-500" /> Share
+							</button>
+							<button
+								type="button"
+								role="menuitem"
+								class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
+								onclick={openEdit}
+							>
+								<Icon name="pencil" class="h-4 w-4 text-slate-500" /> Edit
+							</button>
+							<button
+								type="button"
+								role="menuitem"
+								class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40"
+								onclick={() => (deleteModal = true)}
+							>
+								<Icon name="trash" class="h-4 w-4" /> Delete
+							</button>
+						</Dropdown>
 					{:else}
 						<span
 							class="inline-flex items-center gap-1.5 rounded-md bg-violet-100 px-2.5 py-1.5 text-xs font-medium text-violet-700 dark:bg-violet-950/40 dark:text-violet-300"
@@ -345,6 +345,26 @@
 					{/if}
 				</div>
 			</div>
+
+			<div class="mt-3 flex flex-wrap items-center gap-2">
+				<h1 class="break-words text-xl font-semibold">{collection.name}</h1>
+				<span
+					class="inline-flex shrink-0 items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+				>
+					<Icon name="currency" class="h-3.5 w-3.5" />
+					{collection.currency}
+				</span>
+			</div>
+
+			{#if collection.description}
+				<p class="mt-2 text-sm text-slate-600 dark:text-slate-400">{collection.description}</p>
+			{/if}
+			{#if collection.locationLat != null && collection.locationLng != null}
+				<p class="mt-2 inline-flex items-center gap-1 text-xs text-slate-500">
+					<Icon name="map-pin" class="h-3.5 w-3.5" />
+					{collection.locationLabel || 'Located'}
+				</p>
+			{/if}
 
 			{#if stats}
 				<div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -637,6 +657,30 @@
 		onconfirm={confirmDelete}
 	/>
 {/if}
+
+<!-- Metadata modal -->
+<Modal title="Collection metadata" bind:open={metadataModal}>
+	{#if collection}
+		<dl class="space-y-2 text-sm">
+			<div class="flex justify-between gap-4">
+				<dt class="text-slate-500">Created</dt>
+				<dd class="text-right">{new Date(collection.createdAt).toLocaleString()}</dd>
+			</div>
+			<div class="flex justify-between gap-4">
+				<dt class="text-slate-500">Created by</dt>
+				<dd class="text-right">{collection.createdBy || '—'}</dd>
+			</div>
+			<div class="flex justify-between gap-4">
+				<dt class="text-slate-500">Last updated</dt>
+				<dd class="text-right">{new Date(collection.updatedAt).toLocaleString()}</dd>
+			</div>
+			<div class="flex justify-between gap-4">
+				<dt class="text-slate-500">Updated by</dt>
+				<dd class="text-right">{collection.updatedBy || '—'}</dd>
+			</div>
+		</dl>
+	{/if}
+</Modal>
 
 <!-- Share modal -->
 <Modal title="Share collection" bind:open={shareModal}>

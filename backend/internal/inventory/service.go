@@ -680,8 +680,39 @@ func (s *Service) UpdateItem(ctx context.Context, userID, id int64, in ItemInput
 	return s.GetItem(ctx, userID, id)
 }
 
-// AddItemAttachment appends an uploaded file to an owned item and returns the
-// refreshed record.
+// MoveItem moves an item to a different collection the user can write to. When
+// the target collection uses a different currency, the item's entries are
+// re-stamped with the new currency so totals stay consistent.
+func (s *Service) MoveItem(ctx context.Context, userID, id, targetCollectionID int64) (*Item, error) {
+	if err := s.requireItemWrite(ctx, userID, id); err != nil {
+		return nil, err
+	}
+	if err := s.requireCollectionWrite(ctx, userID, targetCollectionID); err != nil {
+		return nil, err
+	}
+	var currency string
+	err := s.db.QueryRowContext(ctx, `SELECT currency FROM collections WHERE id = ?`, targetCollectionID).Scan(&currency)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("lookup target currency: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE items SET collection_id = ?, updated_at = datetime('now'), updated_by = ? WHERE id = ?`,
+		targetCollectionID, userID, id,
+	); err != nil {
+		return nil, fmt.Errorf("move item: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE entries SET currency = ?, updated_at = datetime('now'), updated_by = ? WHERE item_id = ?`,
+		currency, userID, id,
+	); err != nil {
+		return nil, fmt.Errorf("restamp entry currency: %w", err)
+	}
+	return s.GetItem(ctx, userID, id)
+}
+
 func (s *Service) AddItemAttachment(ctx context.Context, userID, id int64, att Attachment) (*Item, error) {
 	if err := s.requireItemWrite(ctx, userID, id); err != nil {
 		return nil, err
@@ -1105,6 +1136,39 @@ func (s *Service) PortfolioStats(ctx context.Context, userID int64, includeShare
 		return nil, fmt.Errorf("count entries: %w", err)
 	}
 	return summary, nil
+}
+
+// RecentItems returns the most recently created or updated items the user can
+// access, ordered by last update. Honours the same shared-collection scope as
+// the portfolio stats.
+func (s *Service) RecentItems(ctx context.Context, userID int64, includeShared bool, limit int) ([]Item, error) {
+	if limit <= 0 || limit > 50 {
+		limit = 8
+	}
+	scope := "c.user_id = ?"
+	args := []any{userID}
+	if includeShared {
+		scope = "(c.user_id = ? OR EXISTS (SELECT 1 FROM collection_shares cs WHERE cs.collection_id = c.id AND cs.user_id = ?))"
+		args = []any{userID, userID}
+	}
+	args = append(args, limit)
+	rows, err := s.db.QueryContext(ctx,
+		itemSelect+` WHERE `+scope+` ORDER BY i.updated_at DESC, i.id DESC LIMIT ?`,
+		args...,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("recent items: %w", err)
+	}
+	defer rows.Close()
+	out := make([]Item, 0)
+	for rows.Next() {
+		it, err := scanItem(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan recent item: %w", err)
+		}
+		out = append(out, it)
+	}
+	return out, rows.Err()
 }
 
 // ---------- Search ----------

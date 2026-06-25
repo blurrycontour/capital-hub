@@ -1,7 +1,7 @@
-# Capital-Hub developer tasks.
+# Capital Hub developer tasks.
 .DEFAULT_GOAL := help
 
-VERSION ?= dev
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 DIST := backend/internal/web/dist
 
 .PHONY: help

@@ -1,12 +1,20 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { listNotifications, getPortfolioStats, formatCurrency, type NotificationItem } from '$lib/api';
+	import {
+		listNotifications,
+		getPortfolioStats,
+		getRecentItems,
+		formatCurrency,
+		type NotificationItem,
+		type Item
+	} from '$lib/api';
 	import { auth } from '$lib/auth.svelte';
 	import Icon, { type IconName } from '$lib/Icon.svelte';
 
 	const user = $derived(auth.user);
 
 	let notifications = $state<NotificationItem[]>([]);
+	let recentItems = $state<Item[]>([]);
 	let error = $state('');
 
 	// Portfolio summary loaded from the backend.
@@ -29,14 +37,31 @@
 		}
 	]);
 
+	// Compact "x ago" label for the recent-items list.
+	function timeAgo(iso: string): string {
+		const then = new Date(iso).getTime();
+		if (Number.isNaN(then)) return '';
+		const secs = Math.max(0, Math.round((Date.now() - then) / 1000));
+		if (secs < 60) return 'just now';
+		const mins = Math.round(secs / 60);
+		if (mins < 60) return `${mins}m ago`;
+		const hours = Math.round(mins / 60);
+		if (hours < 24) return `${hours}h ago`;
+		const days = Math.round(hours / 24);
+		if (days < 30) return `${days}d ago`;
+		return new Date(iso).toLocaleDateString();
+	}
+
 	onMount(async () => {
 		try {
 			if (auth.user) {
-				const [notes, portfolio] = await Promise.all([
+				const [notes, portfolio, recent] = await Promise.all([
 					listNotifications(5),
-					getPortfolioStats()
+					getPortfolioStats(),
+					getRecentItems(6)
 				]);
 				notifications = notes;
+				recentItems = recent;
 				summary.collections = portfolio.collectionCount;
 				summary.items = portfolio.itemCount;
 				summary.entries = portfolio.entryCount;
@@ -80,6 +105,41 @@
 			</div>
 		{/each}
 	</div>
+
+	<!-- Recently modified items -->
+	{#if recentItems.length > 0}
+		<div class="space-y-3 rounded-lg border border-slate-200 p-5 dark:border-slate-800">
+			<h2 class="text-lg font-semibold">Recently added or edited</h2>
+			<ul class="grid gap-2 sm:grid-cols-2">
+				{#each recentItems as it (it.id)}
+					<li>
+						<a
+							href={`/collections/${it.collectionId}/items/${it.id}`}
+							class="flex items-center gap-3 rounded-md border border-slate-200 p-2.5 transition hover:border-sky-400 hover:shadow-sm dark:border-slate-800 dark:hover:border-sky-600"
+						>
+							{#if it.imagePath}
+								<img
+									src={it.imagePath}
+									alt={it.name}
+									class="h-10 w-10 shrink-0 rounded object-cover"
+								/>
+							{:else}
+								<span
+									class="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300"
+								>
+									<Icon name="cube" class="h-5 w-5" />
+								</span>
+							{/if}
+							<span class="min-w-0 flex-1">
+								<span class="block truncate text-sm font-medium">{it.name}</span>
+								<span class="block truncate text-xs text-slate-500">{timeAgo(it.updatedAt)}</span>
+							</span>
+						</a>
+					</li>
+				{/each}
+			</ul>
+		</div>
+	{/if}
 
 	<!-- Quick links + activity -->
 	<div class="grid gap-4 md:grid-cols-2">

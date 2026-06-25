@@ -70,7 +70,7 @@
 				<span class="flex h-10 w-10 items-center justify-center rounded-lg bg-sky-600 text-white">
 					<Icon name="logo" class="h-6 w-6" />
 				</span>
-				<span class="text-xl font-bold">Capital&#8209;Hub</span>
+				<span class="text-xl font-bold">Capital Hub</span>
 			</div>
 
 			<div>

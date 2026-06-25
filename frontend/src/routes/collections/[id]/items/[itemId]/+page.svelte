@@ -9,11 +9,14 @@
 	import MapView from '$lib/MapView.svelte';
 	import ImageGallery from '$lib/ImageGallery.svelte';
 	import ConfirmDeleteModal from '$lib/ConfirmDeleteModal.svelte';
+	import Dropdown from '$lib/Dropdown.svelte';
 	import { breadcrumbs } from '$lib/breadcrumb.svelte';
 	import {
 		getItem,
 		updateItem,
 		deleteItem,
+		moveItem,
+		listCollections,
 		uploadItemImage,
 		deleteItemImage,
 		uploadItemAttachment,
@@ -61,6 +64,14 @@
 
 	let deleteItemModal = $state(false);
 	let deletingItem = $state(false);
+
+	// Move-to-collection modal.
+	let moveModal = $state(false);
+	let moveTargets = $state<Collection[]>([]);
+	let moveTargetId = $state<number | null>(null);
+	let movingItem = $state(false);
+	let moveError = $state('');
+	let loadingMoveTargets = $state(false);
 
 	// Image upload
 	let uploading = $state(false);
@@ -192,10 +203,10 @@
 				attachments: item.attachments,
 				customFields: eFields.filter((f) => f.label.trim() || f.value.trim())
 			});
-			// Close the modal (tearing down its LocationPicker map) and let that
-			// flush complete before reassigning `item`, which re-renders the
-			// page-level location map. Doing both in one tick can make two Leaflet
-			// maps fight over the shared animation frame and freeze the page.
+			// Close the modal first, then let its LocationPicker (a Leaflet map)
+			// tear down on the next tick BEFORE reassigning `item` re-renders the
+			// page-level location MapView. Doing both in one flush makes two Leaflet
+			// maps fight over the same animation frame and locks up the UI.
 			editModal = false;
 			await tick();
 			item = updated;
@@ -217,6 +228,61 @@
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to delete item';
 			deletingItem = false;
+		}
+	}
+
+	async function openMove() {
+		if (!item) return;
+		moveModal = true;
+		moveError = '';
+		moveTargetId = null;
+		loadingMoveTargets = true;
+		try {
+			const all = await listCollections();
+			// Only collections the user can write to, excluding the current one.
+			moveTargets = all.filter(
+				(c) =>
+					c.id !== item!.collectionId &&
+					(c.accessLevel === 'owner' || c.accessLevel === 'write')
+			);
+		} catch (e) {
+			moveError = e instanceof Error ? e.message : 'Failed to load collections';
+		} finally {
+			loadingMoveTargets = false;
+		}
+	}
+
+	// The currency the entries will be re-stamped with after a move, when it
+	// differs from the current collection's currency.
+	const moveTarget = $derived(moveTargets.find((c) => c.id === moveTargetId) ?? null);
+	const moveCurrencyChanges = $derived(
+		moveTarget != null && collection != null && moveTarget.currency !== collection.currency
+	);
+
+	async function confirmMove() {
+		if (!item || moveTargetId == null) return;
+		movingItem = true;
+		moveError = '';
+		try {
+			const updated = await moveItem(item.id, moveTargetId);
+			// Close the modal first and let it tear down before the page MapView
+			// re-renders from the reassigned item/collection (avoids the Leaflet
+			// double-map freeze).
+			moveModal = false;
+			await tick();
+			item = updated;
+			collection = await getCollection(updated.collectionId);
+			updateTrail();
+			// Keep the item open but reflect its new collection in the URL.
+			await goto(`/collections/${updated.collectionId}/items/${updated.id}`, {
+				replaceState: true,
+				noScroll: true,
+				keepFocus: true
+			});
+		} catch (e) {
+			moveError = e instanceof Error ? e.message : 'Failed to move item';
+		} finally {
+			movingItem = false;
 		}
 	}
 
@@ -352,14 +418,6 @@
 			{error}
 		</div>
 	{:else if item}
-		<a
-			href={`/collections/${item.collectionId}`}
-			class="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
-		>
-			<Icon name="chevron-left" class="h-4 w-4" />
-			{collection ? collection.name : 'Back to collection'}
-		</a>
-
 		{#if error}
 			<div
 				class="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
@@ -371,9 +429,18 @@
 		<div class="space-y-3">
 			<!-- Details -->
 			<div class="space-y-3">
-				<div class="flex flex-wrap items-start justify-between gap-2">
-					<h1 class="text-2xl font-bold">{item.name}</h1>
-					<div class="flex items-center gap-2">
+				<div class="flex items-center justify-between gap-2">
+					<div class="flex min-w-0 items-center gap-2">
+						<span
+							class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300"
+						>
+							<Icon name="cube" class="h-5 w-5" />
+						</span>
+						<span class="text-xs font-semibold uppercase tracking-wide text-slate-400"
+							>Item</span
+						>
+					</div>
+					<div class="flex shrink-0 items-center gap-2">
 						<button
 							type="button"
 							class="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800"
@@ -383,23 +450,37 @@
 							<Icon name="info" class="h-5 w-5" />
 						</button>
 						{#if canWrite}
-							<button
-								type="button"
-								class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
-								onclick={openEdit}
-							>
-								<Icon name="pencil" class="h-4 w-4" /> Edit
-							</button>
-							<button
-								type="button"
-								class="inline-flex items-center gap-1.5 rounded-md border border-rose-300 px-2.5 py-1.5 text-sm text-rose-600 hover:bg-rose-50 dark:border-rose-800 dark:text-rose-400 dark:hover:bg-rose-950/40"
-								onclick={() => (deleteItemModal = true)}
-							>
-								<Icon name="trash" class="h-4 w-4" />
-							</button>
+							<Dropdown label="Options">
+								<button
+									type="button"
+									role="menuitem"
+									class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
+									onclick={openEdit}
+								>
+									<Icon name="pencil" class="h-4 w-4 text-slate-500" /> Edit
+								</button>
+								<button
+									type="button"
+									role="menuitem"
+									class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
+									onclick={openMove}
+								>
+									<Icon name="arrow-right" class="h-4 w-4 text-slate-500" /> Move to…
+								</button>
+								<button
+									type="button"
+									role="menuitem"
+									class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40"
+									onclick={() => (deleteItemModal = true)}
+								>
+									<Icon name="trash" class="h-4 w-4" /> Delete
+								</button>
+							</Dropdown>
 						{/if}
 					</div>
 				</div>
+
+				<h1 class="break-words text-2xl font-bold">{item.name}</h1>
 
 				{#if item.description}
 					<p class="text-sm text-slate-600 dark:text-slate-400">{item.description}</p>
@@ -817,6 +898,65 @@
 		onconfirm={confirmDeleteItem}
 	/>
 {/if}
+
+<!-- Move item modal -->
+<Modal title="Move item" bind:open={moveModal}>
+	<div class="space-y-3">
+		{#if moveError}
+			<div
+				class="rounded-md border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300"
+			>
+				{moveError}
+			</div>
+		{/if}
+		{#if loadingMoveTargets}
+			<p class="text-sm text-slate-500">Loading collections…</p>
+		{:else if moveTargets.length === 0}
+			<p class="text-sm text-slate-500">
+				There are no other collections you can move this item to.
+			</p>
+		{:else}
+			<label class="block space-y-1 text-sm">
+				<span class="font-medium">Move to collection</span>
+				<select
+					bind:value={moveTargetId}
+					class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+				>
+					<option value={null} disabled selected>Select a collection…</option>
+					{#each moveTargets as c (c.id)}
+						<option value={c.id}>{c.name} ({c.currency})</option>
+					{/each}
+				</select>
+			</label>
+			{#if moveCurrencyChanges && moveTarget}
+				<div
+					class="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
+				>
+					The target collection uses {moveTarget.currency}, so this item's entries will be
+					changed from {collection?.currency} to {moveTarget.currency}.
+				</div>
+			{/if}
+		{/if}
+	</div>
+	{#snippet footer()}
+		<button
+			type="button"
+			class="rounded-md border border-slate-300 px-4 py-2 text-sm hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+			onclick={() => (moveModal = false)}
+		>
+			Cancel
+		</button>
+		<button
+			type="button"
+			class="inline-flex items-center gap-1.5 rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-50"
+			disabled={moveTargetId == null || movingItem}
+			onclick={confirmMove}
+		>
+			<Icon name="arrow-right" class="h-4 w-4" />
+			{movingItem ? 'Moving…' : 'Move'}
+		</button>
+	{/snippet}
+</Modal>
 
 <!-- Delete entry modal -->
 <Modal

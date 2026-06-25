@@ -34,27 +34,31 @@
 
 	function render() {
 		if (!map || !L || !layerGroup) return;
-		layerGroup.clearLayers();
-		const valid = validMarkers();
-		const latlngs: [number, number][] = [];
-		for (const m of valid) {
-			const mk = L.marker([m.lat, m.lng]);
-			if (m.label) mk.bindTooltip(m.label);
-			if (m.href) {
-				const href = m.href;
-				mk.on('click', () => goto(href));
+		try {
+			layerGroup.clearLayers();
+			const valid = validMarkers();
+			const latlngs: [number, number][] = [];
+			for (const m of valid) {
+				const mk = L.marker([m.lat, m.lng]);
+				if (m.label) mk.bindTooltip(m.label);
+				if (m.href) {
+					const href = m.href;
+					mk.on('click', () => goto(href));
+				}
+				mk.addTo(layerGroup);
+				latlngs.push([m.lat, m.lng]);
 			}
-			mk.addTo(layerGroup);
-			latlngs.push([m.lat, m.lng]);
-		}
-		// `animate: false` avoids Leaflet's requestAnimationFrame-driven pan/zoom
-		// transitions. Those can conflict with another Leaflet map being torn down
-		// in the same tick (e.g. a LocationPicker inside a modal that just closed)
-		// and lock up the main thread.
-		if (latlngs.length > 1) {
-			map.fitBounds(latlngs, { padding: [30, 30], maxZoom: 16, animate: false });
-		} else if (latlngs.length === 1) {
-			map.setView(latlngs[0], zoom, { animate: false });
+			// `animate: false` avoids Leaflet's requestAnimationFrame-driven pan/zoom
+			// transitions. Those can conflict with another Leaflet map being torn down
+			// in the same tick (e.g. a LocationPicker inside a modal that just closed)
+			// and lock up the main thread.
+			if (latlngs.length > 1) {
+				map.fitBounds(latlngs, { padding: [30, 30], maxZoom: 16, animate: false });
+			} else if (latlngs.length === 1) {
+				map.setView(latlngs[0], zoom, { animate: false });
+			}
+		} catch {
+			/* ignore Leaflet render errors so the reactive flush is never aborted */
 		}
 	}
 
@@ -102,7 +106,13 @@
 
 	// Re-render markers whenever the input changes after the map is ready.
 	$effect(() => {
-		void markers;
+		// Track each marker's coordinates/label so edits (move/clear) re-render.
+		for (const m of markers) {
+			void m.lat;
+			void m.lng;
+			void m.label;
+		}
+		void markers.length;
 		render();
 	});
 

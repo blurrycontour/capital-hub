@@ -3,10 +3,14 @@ package auth
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
 	"database/sql"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"math/big"
 	"net"
 	"net/http"
 	"regexp"
@@ -411,6 +415,105 @@ func (s *Service) AdminDeleteUser(ctx context.Context, callerID, targetID int64)
 	}
 	_, err := s.db.ExecContext(ctx, `DELETE FROM users WHERE id = ?`, targetID)
 	if err != nil {
+		return fmt.Errorf("delete user: %w", err)
+	}
+	return nil
+}
+
+// accountDeletionCodeTTL is how long a requested deletion code stays valid.
+const accountDeletionCodeTTL = 15 * time.Minute
+
+// hashDeletionCode returns a hex-encoded SHA-256 digest of the code so the
+// plaintext is never stored at rest.
+func hashDeletionCode(code string) string {
+	sum := sha256.Sum256([]byte(code))
+	return hex.EncodeToString(sum[:])
+}
+
+// RequestAccountDeletion generates a one-time confirmation code for the given
+// user, stores its hash, and returns the plaintext code together with the
+// user's email so the caller can deliver it. An error is returned when the user
+// has no email address on file.
+func (s *Service) RequestAccountDeletion(ctx context.Context, userID int64) (code, email string, err error) {
+	if userID == 0 {
+		return "", "", errors.New("user id is required")
+	}
+
+	if err := s.db.QueryRowContext(ctx, `SELECT email FROM users WHERE id = ?`, userID).Scan(&email); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", "", errors.New("user not found")
+		}
+		return "", "", fmt.Errorf("load user email: %w", err)
+	}
+	email = strings.TrimSpace(email)
+	if email == "" {
+		return "", "", errors.New("no email address on file for this account")
+	}
+
+	// Six-digit numeric code.
+	n, err := rand.Int(rand.Reader, big.NewInt(1000000))
+	if err != nil {
+		return "", "", fmt.Errorf("generate code: %w", err)
+	}
+	code = fmt.Sprintf("%06d", n.Int64())
+	expires := time.Now().UTC().Add(accountDeletionCodeTTL).Format("2006-01-02 15:04:05")
+
+	if _, err := s.db.ExecContext(
+		ctx,
+		`INSERT INTO account_deletion_codes (user_id, code_hash, expires_at, created_at)
+		 VALUES (?, ?, ?, datetime('now'))
+		 ON CONFLICT(user_id) DO UPDATE SET
+		   code_hash = excluded.code_hash,
+		   expires_at = excluded.expires_at,
+		   created_at = datetime('now')`,
+		userID,
+		hashDeletionCode(code),
+		expires,
+	); err != nil {
+		return "", "", fmt.Errorf("store deletion code: %w", err)
+	}
+
+	return code, email, nil
+}
+
+// DeleteOwnAccount verifies the supplied confirmation code and, on success,
+// permanently removes the user account (cascading to owned data).
+func (s *Service) DeleteOwnAccount(ctx context.Context, userID int64, code string) error {
+	if userID == 0 {
+		return errors.New("user id is required")
+	}
+	code = strings.TrimSpace(code)
+	if code == "" {
+		return errors.New("confirmation code is required")
+	}
+
+	var storedHash, expiresAt string
+	err := s.db.QueryRowContext(
+		ctx,
+		`SELECT code_hash, expires_at FROM account_deletion_codes WHERE user_id = ?`,
+		userID,
+	).Scan(&storedHash, &expiresAt)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return errors.New("no pending deletion request; request a code first")
+		}
+		return fmt.Errorf("load deletion code: %w", err)
+	}
+
+	expires, err := time.Parse("2006-01-02 15:04:05", expiresAt)
+	if err != nil {
+		return fmt.Errorf("parse expiry: %w", err)
+	}
+	if time.Now().UTC().After(expires) {
+		_, _ = s.db.ExecContext(ctx, `DELETE FROM account_deletion_codes WHERE user_id = ?`, userID)
+		return errors.New("confirmation code has expired; request a new one")
+	}
+
+	if subtle.ConstantTimeCompare([]byte(storedHash), []byte(hashDeletionCode(code))) != 1 {
+		return errors.New("incorrect confirmation code")
+	}
+
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM users WHERE id = ?`, userID); err != nil {
 		return fmt.Errorf("delete user: %w", err)
 	}
 	return nil

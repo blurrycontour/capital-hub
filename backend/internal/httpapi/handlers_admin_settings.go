@@ -226,6 +226,24 @@ func (s *Server) upsertSetting(ctx context.Context, key, value string) error {
 }
 
 func sendSMTPTestEmail(cfg *smtpInternal, to string) error {
+	return sendSMTPMessage(cfg, to, "Capital Hub SMTP Test",
+		"This is a Capital Hub test email. SMTP configuration looks good.")
+}
+
+// sendEmail loads the configured SMTP settings and delivers a plain-text
+// message. It returns an error when SMTP is not configured.
+func (s *Server) sendEmail(ctx context.Context, to, subject, body string) error {
+	settings, err := s.loadSMTPInternal(ctx)
+	if err != nil {
+		return err
+	}
+	if settings.Host == "" || settings.Port == 0 || settings.From == "" {
+		return errors.New("smtp settings are incomplete")
+	}
+	return sendSMTPMessage(settings, to, subject, body)
+}
+
+func sendSMTPMessage(cfg *smtpInternal, to, subject, body string) error {
 	addr := net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port))
 
 	fromAddress, err := mail.ParseAddress(cfg.From)
@@ -236,7 +254,7 @@ func sendSMTPTestEmail(cfg *smtpInternal, to string) error {
 	headers := map[string]string{
 		"From":         fromAddress.String(),
 		"To":           to,
-		"Subject":      "Capital-Hub SMTP Test",
+		"Subject":      subject,
 		"Date":         time.Now().UTC().Format(time.RFC1123Z),
 		"MIME-Version": "1.0",
 		"Content-Type": "text/plain; charset=UTF-8",
@@ -249,7 +267,8 @@ func sendSMTPTestEmail(cfg *smtpInternal, to string) error {
 		msg.WriteString("\r\n")
 	}
 	msg.WriteString("\r\n")
-	msg.WriteString("This is a Capital-Hub test email. SMTP configuration looks good.\r\n")
+	msg.WriteString(body)
+	msg.WriteString("\r\n")
 
 	var auth smtp.Auth
 	if cfg.Username != "" {

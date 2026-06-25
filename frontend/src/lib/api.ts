@@ -511,6 +511,11 @@ export async function updateItem(id: number, payload: ItemInput): Promise<Item> 
 	return body.item;
 }
 
+export async function moveItem(id: number, collectionId: number): Promise<Item> {
+	const body = await mutate<{ item: Item }>(`/api/v1/items/${id}/move`, 'POST', { collectionId });
+	return body.item;
+}
+
 export async function deleteItem(id: number): Promise<void> {
 	await mutate<{ ok: boolean }>(`/api/v1/items/${id}`, 'DELETE');
 }
@@ -603,6 +608,26 @@ export async function getPortfolioStats(): Promise<PortfolioSummary> {
 	const res = await fetch('/api/v1/stats/portfolio');
 	const body = await parseJSON<{ stats: PortfolioSummary }>(res);
 	return body.stats;
+}
+
+export async function getRecentItems(limit = 8): Promise<Item[]> {
+	const res = await fetch(`/api/v1/stats/recent-items?limit=${limit}`);
+	const body = await parseJSON<{ items: Item[] }>(res);
+	return body.items;
+}
+
+export async function getVersion(): Promise<string> {
+	const res = await fetch('/api/v1/version');
+	const body = await parseJSON<{ version: string }>(res);
+	return body.version;
+}
+
+export async function requestAccountDeletion(): Promise<void> {
+	await mutate<{ ok: boolean }>('/api/v1/auth/me/deletion-code', 'POST');
+}
+
+export async function confirmAccountDeletion(code: string): Promise<void> {
+	await mutate<{ ok: boolean }>('/api/v1/auth/me', 'DELETE', { code });
 }
 
 // Common currency codes offered in the UI.

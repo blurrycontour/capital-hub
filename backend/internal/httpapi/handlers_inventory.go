@@ -346,6 +346,38 @@ func (s *Server) handleDeleteItem(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
+type moveItemPayload struct {
+	CollectionID int64 `json:"collectionId"`
+}
+
+func (s *Server) handleMoveItem(w http.ResponseWriter, r *http.Request) {
+	user := userFromContext(r)
+	id, ok := s.pathID(r)
+	if !ok {
+		writeAPIError(w, http.StatusBadRequest, "invalid item id")
+		return
+	}
+	var req moveItemPayload
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid json payload")
+		return
+	}
+	if req.CollectionID <= 0 {
+		writeAPIError(w, http.StatusBadRequest, "target collection is required")
+		return
+	}
+	item, err := s.inventory.MoveItem(r.Context(), user.ID, id, req.CollectionID)
+	if err != nil {
+		if isValidationErr(err) {
+			writeAPIError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		s.writeInventoryError(w, r, err, "move item")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"item": item})
+}
+
 func (s *Server) handleItemStats(w http.ResponseWriter, r *http.Request) {
 	user := userFromContext(r)
 	id, ok := s.pathID(r)
@@ -655,6 +687,27 @@ func (s *Server) handlePortfolioStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"stats": stats})
+}
+
+func (s *Server) handleRecentItems(w http.ResponseWriter, r *http.Request) {
+	user := userFromContext(r)
+	includeShared, err := s.auth.StatsIncludeShared(r.Context(), user.ID)
+	if err != nil {
+		s.writeInventoryError(w, r, err, "recent items")
+		return
+	}
+	limit := 8
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, convErr := strconv.Atoi(v); convErr == nil {
+			limit = n
+		}
+	}
+	items, err := s.inventory.RecentItems(r.Context(), user.ID, includeShared, limit)
+	if err != nil {
+		s.writeInventoryError(w, r, err, "recent items")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
 // isValidationErr reports whether an error is a user-facing validation failure

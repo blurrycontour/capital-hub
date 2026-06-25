@@ -1,4 +1,4 @@
-// Command server is the Capital-Hub backend entrypoint: it loads configuration,
+// Command server is the Capital Hub backend entrypoint: it loads configuration,
 // opens the database, applies migrations, and serves the HTTP API plus the
 // embedded frontend.
 package main
@@ -19,6 +19,10 @@ import (
 	"github.com/aditya/capital-hub/internal/logging"
 )
 
+// version is the build version string, injected at build time via
+// -ldflags "-X main.version=...". Defaults to "dev" for local builds.
+var version = "dev"
+
 func main() {
 	if err := run(); err != nil {
 		// Logger may not be initialized yet; fall back to stderr.
@@ -35,6 +39,8 @@ func run() error {
 
 	logger := logging.New(cfg.LogLevel, false)
 	logger.Info("starting capital-hub", "addr", cfg.Addr, "data_dir", cfg.DataDir)
+
+	httpapi.Version = version
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

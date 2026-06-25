@@ -20,6 +20,9 @@
 
 	// Sidebar layout state (persisted).
 	let collapsed = $state(false);
+	// Mobile off-canvas drawer state (separate from desktop collapse).
+	let mobileOpen = $state(false);
+	let isMobile = $state(false);
 
 	const SIDEBAR_KEY = 'ch-sidebar';
 
@@ -32,7 +35,8 @@
 	];
 
 	// The sidebar is expanded unless explicitly collapsed (pure toggle).
-	const expanded = $derived(!collapsed);
+	// On mobile the off-canvas drawer always shows full-width labels.
+	const expanded = $derived(isMobile ? true : !collapsed);
 
 	const initials = $derived.by(() => {
 		const u = auth.user;
@@ -70,6 +74,20 @@
 		applyTheme(theme);
 		loadSidebarState();
 		void init();
+
+		// Track viewport so the sidebar can switch between desktop collapse and
+		// mobile off-canvas drawer behaviour.
+		const mq = window.matchMedia('(max-width: 767px)');
+		const apply = () => (isMobile = mq.matches);
+		apply();
+		mq.addEventListener('change', apply);
+		return () => mq.removeEventListener('change', apply);
+	});
+
+	// Close the mobile drawer whenever the route changes.
+	$effect(() => {
+		void $page.url.pathname;
+		mobileOpen = false;
 	});
 
 	async function init() {
@@ -118,6 +136,16 @@
 		saveSidebarState();
 	}
 
+	// The header button toggles the off-canvas drawer on mobile and the
+	// icon/label collapse on desktop.
+	function toggleSidebar() {
+		if (isMobile) {
+			mobileOpen = !mobileOpen;
+		} else {
+			toggleCollapsed();
+		}
+	}
+
 	function toggleTheme() {
 		theme = theme === 'dark' ? 'light' : 'dark';
 		applyTheme(theme);
@@ -140,10 +168,20 @@
 		</div>
 	{:else if showChrome}
 		<div class="flex min-h-screen">
+			{#if mobileOpen}
+				<!-- Mobile drawer backdrop -->
+				<button
+					type="button"
+					aria-label="Close menu"
+					onclick={() => (mobileOpen = false)}
+					class="fixed inset-0 z-30 bg-slate-900/50 backdrop-blur-sm md:hidden"
+				></button>
+			{/if}
 			<aside
-				class="sticky top-0 z-20 flex h-screen shrink-0 flex-col border-r border-slate-200 bg-white transition-all duration-150 dark:border-slate-800 dark:bg-slate-900"
+				class="fixed inset-y-0 left-0 z-40 flex h-screen shrink-0 flex-col border-r border-slate-200 bg-white transition-transform duration-200 md:sticky md:top-0 md:z-auto md:translate-x-0 md:transition-[width] dark:border-slate-800 dark:bg-slate-900"
 				class:w-64={expanded}
 				class:w-16={!expanded}
+				class:-translate-x-full={!mobileOpen}
 			>
 				<div
 					class="flex h-14 shrink-0 items-center border-b border-slate-200 px-3 dark:border-slate-800"
@@ -252,7 +290,7 @@
 					<div class="flex min-w-0 items-center gap-2">
 						<button
 							type="button"
-							onclick={toggleCollapsed}
+							onclick={toggleSidebar}
 							title={expanded ? 'Collapse sidebar' : 'Expand sidebar'}
 							aria-label={expanded ? 'Collapse sidebar' : 'Expand sidebar'}
 							class="shrink-0 rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-slate-100"

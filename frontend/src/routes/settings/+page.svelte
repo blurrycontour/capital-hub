@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { auth } from '$lib/auth.svelte';
-	import { changePassword, updateProfile, uploadAvatar, getPreferences, updatePreferences } from '$lib/api';
+	import { changePassword, updateProfile, uploadAvatar, getPreferences, updatePreferences, getVersion, requestAccountDeletion, confirmAccountDeletion } from '$lib/api';
 	import Icon from '$lib/Icon.svelte';
+	import Modal from '$lib/Modal.svelte';
+	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
 
 	const user = $derived(auth.user);
@@ -31,12 +33,20 @@
 	let savingPrefs = $state(false);
 	let prefsError = $state('');
 
+	// Build version (baked at build time).
+	let appVersion = $state('');
+
 	onMount(async () => {
 		try {
 			const prefs = await getPreferences();
 			includeSharedInStats = prefs.includeSharedInStats;
 		} catch {
 			/* keep default */
+		}
+		try {
+			appVersion = await getVersion();
+		} catch {
+			/* version is best-effort */
 		}
 	});
 
@@ -51,6 +61,53 @@
 			prefsError = err instanceof Error ? err.message : 'Failed to update preference';
 		} finally {
 			savingPrefs = false;
+		}
+	}
+
+	// Account deletion flow (email-code confirmation).
+	let deleteModalOpen = $state(false);
+	let deleteStage = $state<'confirm' | 'code'>('confirm');
+	let deleteCode = $state('');
+	let sendingCode = $state(false);
+	let deletingAccount = $state(false);
+	let deleteError = $state('');
+
+	function openDeleteModal() {
+		deleteStage = 'confirm';
+		deleteCode = '';
+		deleteError = '';
+		deleteModalOpen = true;
+	}
+
+	async function sendDeletionCode() {
+		sendingCode = true;
+		deleteError = '';
+		try {
+			await requestAccountDeletion();
+			deleteStage = 'code';
+		} catch (err) {
+			deleteError = err instanceof Error ? err.message : 'Failed to send confirmation code';
+		} finally {
+			sendingCode = false;
+		}
+	}
+
+	async function confirmDelete() {
+		if (!deleteCode.trim()) {
+			deleteError = 'Enter the confirmation code from your email';
+			return;
+		}
+		deletingAccount = true;
+		deleteError = '';
+		try {
+			await confirmAccountDeletion(deleteCode.trim());
+			deleteModalOpen = false;
+			auth.set(null);
+			await goto('/login');
+		} catch (err) {
+			deleteError = err instanceof Error ? err.message : 'Failed to delete account';
+		} finally {
+			deletingAccount = false;
 		}
 	}
 
@@ -392,9 +449,100 @@
 				</button>
 			</div>
 		</section>
+
+		<!-- Danger zone: delete account -->
+		<section class="space-y-4 rounded-lg border border-rose-300 p-5 dark:border-rose-900/60">
+			<div class="flex items-center gap-2">
+				<Icon name="trash" class="h-5 w-5 text-rose-500" />
+				<h2 class="text-lg font-semibold text-rose-700 dark:text-rose-400">Delete account</h2>
+			</div>
+			<p class="text-sm text-slate-600 dark:text-slate-400">
+				Permanently delete your account and all collections, items and entries you own. This
+				cannot be undone. We'll email you a confirmation code to verify it's really you.
+			</p>
+			<button
+				type="button"
+				onclick={openDeleteModal}
+				class="inline-flex items-center gap-1.5 rounded-md border border-rose-300 px-4 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50 dark:border-rose-900/60 dark:text-rose-400 dark:hover:bg-rose-950/40"
+			>
+				<Icon name="trash" class="h-4 w-4" />
+				Delete my account
+			</button>
+		</section>
+
+		<!-- App version -->
+		<p class="flex items-center justify-center gap-1.5 text-xs text-slate-400">
+			<Icon name="tag" class="h-3.5 w-3.5" />
+			<span>Version:</span>
+			<span class="font-mono">{appVersion || '—'}</span>
+		</p>
 	{:else}
 		<div class="rounded-lg border border-slate-200 p-4 text-sm text-slate-500 dark:border-slate-800">
 			Loading profile...
 		</div>
 	{/if}
 </section>
+
+<Modal bind:open={deleteModalOpen} title="Delete account">
+	<div class="space-y-4">
+		{#if deleteError}
+			<div class="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-700 dark:bg-red-950/40 dark:text-red-200">
+				{deleteError}
+			</div>
+		{/if}
+
+		{#if deleteStage === 'confirm'}
+			<p class="text-sm text-slate-600 dark:text-slate-300">
+				This will permanently delete your account along with every collection, item and entry you
+				own. This action cannot be undone.
+			</p>
+			<p class="text-sm text-slate-600 dark:text-slate-300">
+				To continue, we'll send a confirmation code to your email address.
+			</p>
+		{:else}
+			<p class="text-sm text-slate-600 dark:text-slate-300">
+				We sent a confirmation code to your email. Enter it below to permanently delete your
+				account.
+			</p>
+			<label class="space-y-1 block">
+				<span class="text-sm font-medium">Confirmation code</span>
+				<input
+					bind:value={deleteCode}
+					inputmode="numeric"
+					autocomplete="one-time-code"
+					placeholder="123456"
+					class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm tracking-widest outline-none focus:border-rose-500 dark:border-slate-700 dark:bg-slate-900"
+				/>
+			</label>
+		{/if}
+	</div>
+
+	{#snippet footer()}
+		<button
+			type="button"
+			onclick={() => (deleteModalOpen = false)}
+			class="rounded-md border border-slate-300 px-4 py-2 text-sm hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+		>
+			Cancel
+		</button>
+		{#if deleteStage === 'confirm'}
+			<button
+				type="button"
+				onclick={sendDeletionCode}
+				disabled={sendingCode}
+				class="rounded-md bg-rose-600 px-4 py-2 text-sm font-medium text-white hover:bg-rose-500 disabled:cursor-not-allowed disabled:opacity-50"
+			>
+				{sendingCode ? 'Sending…' : 'Send confirmation code'}
+			</button>
+		{:else}
+			<button
+				type="button"
+				onclick={confirmDelete}
+				disabled={deletingAccount}
+				class="rounded-md bg-rose-600 px-4 py-2 text-sm font-medium text-white hover:bg-rose-500 disabled:cursor-not-allowed disabled:opacity-50"
+			>
+				{deletingAccount ? 'Deleting…' : 'Delete account'}
+			</button>
+		{/if}
+	{/snippet}
+</Modal>

@@ -368,3 +368,63 @@ func parseOptionalSessionCookie(r *http.Request, name string) (string, error) {
 func parseIDParam(r *http.Request, param string) (int64, error) {
 	return strconv.ParseInt(chi.URLParam(r, param), 10, 64)
 }
+
+// handleRequestAccountDeletion generates a confirmation code and emails it to
+// the current user so they can confirm permanent account deletion.
+func (s *Server) handleRequestAccountDeletion(w http.ResponseWriter, r *http.Request) {
+	user := userFromContext(r)
+	if user == nil {
+		writeAPIError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	code, email, err := s.auth.RequestAccountDeletion(r.Context(), user.ID)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	body := fmt.Sprintf(
+		"You requested to permanently delete your Capital Hub account.\r\n\r\n"+
+			"Your confirmation code is: %s\r\n\r\n"+
+			"This code expires in 15 minutes. If you did not request this, you can ignore this email.\r\n",
+		code,
+	)
+	if err := s.sendEmail(r.Context(), email, "Confirm your Capital Hub account deletion", body); err != nil {
+		s.logger.ErrorContext(r.Context(), "send account deletion code failed", "error", err)
+		writeAPIError(w, http.StatusBadGateway, "failed to send confirmation email; contact your administrator")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+type confirmAccountDeletionRequest struct {
+	Code string `json:"code"`
+}
+
+// handleConfirmAccountDeletion verifies the emailed code and deletes the
+// current user's account, then clears their session.
+func (s *Server) handleConfirmAccountDeletion(w http.ResponseWriter, r *http.Request) {
+	user := userFromContext(r)
+	if user == nil {
+		writeAPIError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	var req confirmAccountDeletionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid json payload")
+		return
+	}
+
+	if err := s.auth.DeleteOwnAccount(r.Context(), user.ID, req.Code); err != nil {
+		writeAPIError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	secure := requestIsSecure(r)
+	http.SetCookie(w, s.auth.ClearSessionCookie(secure))
+	http.SetCookie(w, clearCSRFCookie(secure))
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}

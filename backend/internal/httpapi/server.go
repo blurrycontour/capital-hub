@@ -22,6 +22,9 @@ import (
 	"github.com/aditya/capital-hub/internal/web"
 )
 
+// Version is the build version string, set from main via ldflags.
+var Version = "dev"
+
 // Server holds shared dependencies for HTTP handlers.
 type Server struct {
 	cfg       *config.Config
@@ -66,6 +69,7 @@ func (s *Server) routes() error {
 
 	r.Route("/api/v1", func(api chi.Router) {
 		api.Get("/health", s.handleHealth)
+		api.Get("/version", s.handleVersion)
 
 		api.Route("/auth", func(authRouter chi.Router) {
 			authRouter.Get("/csrf", s.handleCSRFToken)
@@ -81,6 +85,8 @@ func (s *Server) routes() error {
 			authRouter.With(s.requireAuth, s.requireCSRF).Post("/me/password", s.handleChangePassword)
 			authRouter.With(s.requireAuth).Get("/me/preferences", s.handleGetPreferences)
 			authRouter.With(s.requireAuth, s.requireCSRF).Patch("/me/preferences", s.handleUpdatePreferences)
+			authRouter.With(s.requireAuth, s.requireCSRF).Post("/me/deletion-code", s.handleRequestAccountDeletion)
+			authRouter.With(s.requireAuth, s.requireCSRF).Delete("/me", s.handleConfirmAccountDeletion)
 		})
 
 		api.Route("/notifications", func(n chi.Router) {
@@ -108,6 +114,7 @@ func (s *Server) routes() error {
 			it.Use(s.requireAuth)
 			it.Get("/{id}", s.handleGetItem)
 			it.With(s.requireCSRF, s.requireNotReader).Patch("/{id}", s.handleUpdateItem)
+			it.With(s.requireCSRF, s.requireNotReader).Post("/{id}/move", s.handleMoveItem)
 			it.With(s.requireCSRF, s.requireNotReader).Delete("/{id}", s.handleDeleteItem)
 			it.With(s.requireCSRF, s.requireNotReader).Post("/{id}/image", s.handleUploadItemImage)
 			it.With(s.requireCSRF, s.requireNotReader).Delete("/{id}/image", s.handleDeleteItemImage)
@@ -126,6 +133,7 @@ func (s *Server) routes() error {
 
 		api.With(s.requireAuth).Get("/search", s.handleSearch)
 		api.With(s.requireAuth).Get("/stats/portfolio", s.handlePortfolioStats)
+		api.With(s.requireAuth).Get("/stats/recent-items", s.handleRecentItems)
 
 		api.Route("/admin", func(admin chi.Router) {
 			admin.Use(s.requireAuth, s.requireAdmin)
@@ -168,6 +176,10 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		s.logger.ErrorContext(r.Context(), "health check db ping failed", "error", err)
 	}
 	writeJSON(w, code, map[string]string{"status": status})
+}
+
+func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{"version": Version})
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {

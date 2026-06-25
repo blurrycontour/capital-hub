@@ -66,18 +66,15 @@
 	<!-- Right: sign-in form -->
 	<div class="flex items-center justify-center p-6">
 		<div class="w-full max-w-md space-y-4">
-			<div class="flex items-center gap-3 md:hidden">
+			<div class="flex items-center justify-center gap-3 md:hidden">
 				<span class="flex h-10 w-10 items-center justify-center rounded-lg bg-sky-600 text-white">
 					<Icon name="logo" class="h-6 w-6" />
 				</span>
-				<span class="text-xl font-bold">Capital Hub</span>
+				<span class="text-3xl font-bold">Capital Hub</span>
 			</div>
 
-			<div>
-				<h2 class="text-2xl font-bold">Sign in</h2>
-				<p class="text-sm text-slate-600 dark:text-slate-400">
-					Use username/email + password or OIDC.
-				</p>
+			<div class="flex items-center justify-center gap-3">
+				<h2 class="text-center text-l">Sign in to your account</h2>
 			</div>
 
 			{#if error}
@@ -93,10 +90,10 @@
 					e.preventDefault();
 					void submit();
 				}}
-				class="space-y-3 rounded-lg border border-slate-200 p-4 dark:border-slate-800"
+						class="space-y-4 rounded-lg border border-slate-200 p-4 dark:border-slate-800"
 			>
 				<label class="block space-y-1">
-					<span class="text-sm">Username or email</span>
+					<p class="text-sm">Username or email</p>
 					<input
 						bind:value={identifier}
 						required
@@ -105,7 +102,7 @@
 				</label>
 
 				<label class="block space-y-1">
-					<span class="text-sm">Password</span>
+					<p class="text-sm">Password</p>
 					<input
 						type="password"
 						bind:value={password}
@@ -124,6 +121,11 @@
 			</form>
 
 			{#if oidcEnabled}
+				<div class="flex items-center gap-3">
+					<hr class="flex-1 border-slate-300 dark:border-slate-700" />
+					<span class="shrink-0 text-sm text-slate-500 dark:text-slate-400">Or continue with</span>
+					<hr class="flex-1 border-slate-300 dark:border-slate-700" />
+				</div>
 				<a
 					href="/api/v1/auth/oidc/login"
 					class="block rounded-md border border-slate-300 px-4 py-2 text-center text-sm hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"

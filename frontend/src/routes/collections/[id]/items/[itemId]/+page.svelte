@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount, onDestroy, tick } from 'svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import Icon from '$lib/Icon.svelte';
@@ -203,12 +203,13 @@
 				attachments: item.attachments,
 				customFields: eFields.filter((f) => f.label.trim() || f.value.trim())
 			});
-			// Apply the update first so the name/location reflect immediately, then
-			// close the modal. The page MapView renders on the next animation frame,
-			// so it no longer conflicts with the modal map tearing down.
+			// Close the modal first (its own flush) so it always dismisses, then
+			// reassign `item`. The page MapView renders on the next animation frame,
+			// so the update reflects without the modal map teardown freezing the UI.
+			editModal = false;
+			await tick();
 			item = updated;
 			updateTrail();
-			editModal = false;
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to save item';
 		} finally {
@@ -263,10 +264,13 @@
 		moveError = '';
 		try {
 			const updated = await moveItem(item.id, moveTargetId);
+			// Close the modal first (its own flush) so it always dismisses, then
+			// reassign the item/collection and update the URL.
+			moveModal = false;
+			await tick();
 			item = updated;
 			collection = await getCollection(updated.collectionId);
 			updateTrail();
-			moveModal = false;
 			// Keep the item open but reflect its new collection in the URL.
 			await goto(`/collections/${updated.collectionId}/items/${updated.id}`, {
 				replaceState: true,

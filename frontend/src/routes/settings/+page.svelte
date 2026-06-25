@@ -412,8 +412,7 @@
 
 			{#if isOidcOnly}
 				<div class="rounded-md border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm text-indigo-800 dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-200">
-					Your account signs in with OIDC, so there's no local password to change. Manage your
-					credentials with your identity provider.
+					OIDC Authetication
 				</div>
 			{/if}
 

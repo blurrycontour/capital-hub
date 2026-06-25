@@ -128,7 +128,8 @@
 		error = '';
 		success = '';
 		try {
-			const updated = await uploadAvatar(file);
+			const prepared = await downscaleImage(file, 512);
+			const updated = await uploadAvatar(prepared);
 			auth.set(updated);
 			success = 'Profile picture updated';
 		} catch (err) {
@@ -136,6 +137,42 @@
 		} finally {
 			uploadingAvatar = false;
 			input.value = '';
+		}
+	}
+
+	// Downscale a profile picture in the browser before upload so very large
+	// photos don't get stored at full resolution. Returns the original file when
+	// it's already small enough or can't be processed (e.g. unsupported format).
+	async function downscaleImage(file: File, maxSize: number): Promise<File> {
+		if (!file.type.startsWith('image/') || file.type === 'image/gif') return file;
+		try {
+			const bitmap = await createImageBitmap(file);
+			const { width, height } = bitmap;
+			if (Math.max(width, height) <= maxSize) {
+				bitmap.close();
+				return file;
+			}
+			const scale = maxSize / Math.max(width, height);
+			const w = Math.round(width * scale);
+			const h = Math.round(height * scale);
+			const canvas = document.createElement('canvas');
+			canvas.width = w;
+			canvas.height = h;
+			const ctx = canvas.getContext('2d');
+			if (!ctx) {
+				bitmap.close();
+				return file;
+			}
+			ctx.drawImage(bitmap, 0, 0, w, h);
+			bitmap.close();
+			const blob = await new Promise<Blob | null>((resolve) =>
+				canvas.toBlob(resolve, 'image/jpeg', 0.9)
+			);
+			if (!blob) return file;
+			const name = file.name.replace(/\.[^.]+$/, '') + '.jpg';
+			return new File([blob], name, { type: 'image/jpeg' });
+		} catch {
+			return file;
 		}
 	}
 
@@ -149,6 +186,9 @@
 	});
 
 	const dirty = $derived(!!user && (displayName !== user.displayName || email !== user.email));
+
+	// OIDC-only accounts have no local password and cannot change one.
+	const isOidcOnly = $derived(!!user && !user.hasPassword);
 
 	function reset() {
 		if (!user) return;
@@ -339,6 +379,21 @@
 						</span>
 					</dd>
 				</div>
+				<div>
+					<dt class="text-xs uppercase tracking-wide text-slate-500">Sign-in</dt>
+					<dd class="text-sm">
+						{#if isOidcOnly}
+							<span
+								class="inline-flex items-center gap-1 rounded bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300"
+							>
+								<Icon name="shield" class="h-3.5 w-3.5" />
+								OIDC
+							</span>
+						{:else}
+							<span class="text-slate-600 dark:text-slate-300">Password</span>
+						{/if}
+					</dd>
+				</div>
 			</dl>
 		</div>
 
@@ -355,6 +410,13 @@
 				<h2 class="text-lg font-semibold">Change password</h2>
 			</div>
 
+			{#if isOidcOnly}
+				<div class="rounded-md border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm text-indigo-800 dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-200">
+					Your account signs in with OIDC, so there's no local password to change. Manage your
+					credentials with your identity provider.
+				</div>
+			{/if}
+
 			{#if passwordError}
 				<div class="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-700 dark:bg-red-950/40 dark:text-red-200">
 					{passwordError}
@@ -366,14 +428,15 @@
 				</div>
 			{/if}
 
-			<div class="grid gap-4 sm:grid-cols-3">
+			<div class="grid gap-4 sm:grid-cols-3" class:opacity-50={isOidcOnly}>
 				<label class="space-y-1">
 					<span class="text-sm font-medium">Current password</span>
 					<input
 						type="password"
 						bind:value={currentPassword}
 						required
-						class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 dark:border-slate-700 dark:bg-slate-900"
+						disabled={isOidcOnly}
+						class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-slate-900"
 					/>
 				</label>
 				<label class="space-y-1">
@@ -382,7 +445,8 @@
 						type="password"
 						bind:value={newPassword}
 						required
-						class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 dark:border-slate-700 dark:bg-slate-900"
+						disabled={isOidcOnly}
+						class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-slate-900"
 					/>
 				</label>
 				<label class="space-y-1">
@@ -391,7 +455,8 @@
 						type="password"
 						bind:value={confirmPassword}
 						required
-						class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 dark:border-slate-700 dark:bg-slate-900"
+						disabled={isOidcOnly}
+						class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-slate-900"
 					/>
 				</label>
 			</div>
@@ -399,7 +464,7 @@
 			<div class="border-t border-slate-200 pt-4 dark:border-slate-800">
 				<button
 					type="submit"
-					disabled={changingPassword}
+					disabled={changingPassword || isOidcOnly}
 					class="rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-50"
 				>
 					{changingPassword ? 'Saving...' : 'Change password'}

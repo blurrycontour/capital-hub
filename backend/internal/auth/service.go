@@ -30,6 +30,9 @@ type User struct {
 	IsAdmin     bool   `json:"isAdmin"`
 	IsActive    bool   `json:"isActive"`
 	Role        string `json:"role"`
+	// HasPassword is false for accounts that can only sign in via OIDC (no local
+	// password set), so the UI can disable password changes for them.
+	HasPassword bool `json:"hasPassword"`
 }
 
 // Service provides authentication/session operations backed by SQLite.
@@ -77,6 +80,7 @@ func (s *Service) Login(ctx context.Context, identifier, password, userAgent, re
 	if !passwordHash.Valid || passwordHash.String == "" {
 		return nil, "", time.Time{}, errors.New("local password login not enabled for this account")
 	}
+	user.HasPassword = true
 	valid, err := VerifyPassword(password, passwordHash.String)
 	if err != nil {
 		return nil, "", time.Time{}, fmt.Errorf("verify password: %w", err)
@@ -121,21 +125,24 @@ func (s *Service) CurrentUser(ctx context.Context, sessionID string) (*User, err
 	var user User
 	var isAdmin int
 	var isActive int
+	var hasPassword int
 	err := s.db.QueryRowContext(
 		ctx,
-		`SELECT u.id, u.username, u.email, u.display_name, u.avatar_path, u.is_admin, u.is_active, u.role
+		`SELECT u.id, u.username, u.email, u.display_name, u.avatar_path, u.is_admin, u.is_active, u.role,
+		        (u.password_hash IS NOT NULL AND u.password_hash != '') AS has_password
 		 FROM sessions s
 		 JOIN users u ON u.id = s.user_id
 		 WHERE s.id = ?
 		   AND datetime(s.expires_at) > datetime('now')
 		 LIMIT 1`,
 		sessionID,
-	).Scan(&user.ID, &user.Username, &user.Email, &user.DisplayName, &user.AvatarPath, &isAdmin, &isActive, &user.Role)
+	).Scan(&user.ID, &user.Username, &user.Email, &user.DisplayName, &user.AvatarPath, &isAdmin, &isActive, &user.Role, &hasPassword)
 	if err != nil {
 		return nil, err
 	}
 	user.IsAdmin = isAdmin == 1
 	user.IsActive = isActive == 1
+	user.HasPassword = hasPassword == 1
 	if !user.IsActive {
 		return nil, errors.New("user is inactive")
 	}
@@ -165,14 +172,18 @@ func (s *Service) UpdateProfile(ctx context.Context, userID int64, displayName, 
 	var user User
 	var isAdmin int
 	var isActive int
+	var hasPassword int
 	err = s.db.QueryRowContext(
 		ctx,
-		`SELECT id, username, email, display_name, avatar_path, is_admin, is_active, role FROM users WHERE id = ? LIMIT 1`,
+		`SELECT id, username, email, display_name, avatar_path, is_admin, is_active, role,
+		        (password_hash IS NOT NULL AND password_hash != '') AS has_password
+		 FROM users WHERE id = ? LIMIT 1`,
 		userID,
-	).Scan(&user.ID, &user.Username, &user.Email, &user.DisplayName, &user.AvatarPath, &isAdmin, &isActive, &user.Role)
+	).Scan(&user.ID, &user.Username, &user.Email, &user.DisplayName, &user.AvatarPath, &isAdmin, &isActive, &user.Role, &hasPassword)
 	if err != nil {
 		return nil, fmt.Errorf("reload user: %w", err)
 	}
+	user.HasPassword = hasPassword == 1
 	user.IsAdmin = isAdmin == 1
 	user.IsActive = isActive == 1
 	return &user, nil
@@ -198,15 +209,19 @@ func (s *Service) SetAvatar(ctx context.Context, userID int64, avatarPath string
 	var user User
 	var isAdmin int
 	var isActive int
+	var hasPassword int
 	if err := s.db.QueryRowContext(
 		ctx,
-		`SELECT id, username, email, display_name, avatar_path, is_admin, is_active, role FROM users WHERE id = ? LIMIT 1`,
+		`SELECT id, username, email, display_name, avatar_path, is_admin, is_active, role,
+		        (password_hash IS NOT NULL AND password_hash != '') AS has_password
+		 FROM users WHERE id = ? LIMIT 1`,
 		userID,
-	).Scan(&user.ID, &user.Username, &user.Email, &user.DisplayName, &user.AvatarPath, &isAdmin, &isActive, &user.Role); err != nil {
+	).Scan(&user.ID, &user.Username, &user.Email, &user.DisplayName, &user.AvatarPath, &isAdmin, &isActive, &user.Role, &hasPassword); err != nil {
 		return nil, "", fmt.Errorf("reload user: %w", err)
 	}
 	user.IsAdmin = isAdmin == 1
 	user.IsActive = isActive == 1
+	user.HasPassword = hasPassword == 1
 	return &user, prev, nil
 }
 

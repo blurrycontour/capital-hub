@@ -24,6 +24,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history + tags so `git describe` can resolve the nearest tag
+          # and commit distance for untagged (main) builds.
+          fetch-depth: 0
+
+      # Bake a meaningful version into the binary: the exact semver on tag
+      # builds (e.g. 1.2.3), or a `git describe` identifier on untagged main
+      # builds (e.g. 1.0.1-5-ga1b2c3d) so each commit's image is distinct.
+      - name: Compute app version
+        id: version
+        run: echo "version=$(git describe --tags --always --dirty)" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -60,6 +71,6 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            VERSION=${{ steps.meta.outputs.version }}
+            VERSION=${{ steps.version.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

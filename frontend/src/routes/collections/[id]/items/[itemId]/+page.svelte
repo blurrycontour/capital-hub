@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, onDestroy, tick } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import Icon from '$lib/Icon.svelte';
@@ -203,14 +203,12 @@
 				attachments: item.attachments,
 				customFields: eFields.filter((f) => f.label.trim() || f.value.trim())
 			});
-			// Close the modal first, then let its LocationPicker (a Leaflet map)
-			// tear down on the next tick BEFORE reassigning `item` re-renders the
-			// page-level location MapView. Doing both in one flush makes two Leaflet
-			// maps fight over the same animation frame and locks up the UI.
-			editModal = false;
-			await tick();
+			// Apply the update first so the name/location reflect immediately, then
+			// close the modal. The page MapView renders on the next animation frame,
+			// so it no longer conflicts with the modal map tearing down.
 			item = updated;
 			updateTrail();
+			editModal = false;
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to save item';
 		} finally {
@@ -265,14 +263,10 @@
 		moveError = '';
 		try {
 			const updated = await moveItem(item.id, moveTargetId);
-			// Close the modal first and let it tear down before the page MapView
-			// re-renders from the reassigned item/collection (avoids the Leaflet
-			// double-map freeze).
-			moveModal = false;
-			await tick();
 			item = updated;
 			collection = await getCollection(updated.collectionId);
 			updateTrail();
+			moveModal = false;
 			// Keep the item open but reflect its new collection in the URL.
 			await goto(`/collections/${updated.collectionId}/items/${updated.id}`, {
 				replaceState: true,

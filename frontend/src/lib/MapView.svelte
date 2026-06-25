@@ -21,6 +21,7 @@
 
 	let hint = $state('');
 	let hintTimer: ReturnType<typeof setTimeout> | undefined;
+	let renderFrame: number | undefined;
 
 	function showHint(message: string) {
 		hint = message;
@@ -30,6 +31,16 @@
 
 	function validMarkers(): MapMarker[] {
 		return markers.filter((m) => m.lat != null && m.lng != null);
+	}
+
+	// Defer Leaflet rendering to the next animation frame, collapsing rapid
+	// reactive updates into a single render and keeping it out of the flush.
+	function scheduleRender() {
+		if (renderFrame !== undefined) cancelAnimationFrame(renderFrame);
+		renderFrame = requestAnimationFrame(() => {
+			renderFrame = undefined;
+			render();
+		});
 	}
 
 	function render() {
@@ -105,6 +116,11 @@
 	}
 
 	// Re-render markers whenever the input changes after the map is ready.
+	// The actual Leaflet work is deferred to the next animation frame so it never
+	// runs synchronously inside Svelte's reactive flush. That keeps the rest of
+	// the flush (e.g. a header name update) from being blocked, and lets any
+	// other Leaflet map (such as a LocationPicker in a modal that just closed)
+	// finish tearing down first — avoiding a rAF conflict that can freeze the UI.
 	$effect(() => {
 		// Track each marker's coordinates/label so edits (move/clear) re-render.
 		for (const m of markers) {
@@ -113,12 +129,13 @@
 			void m.label;
 		}
 		void markers.length;
-		render();
+		scheduleRender();
 	});
 
 	onMount(init);
 	onDestroy(() => {
 		clearTimeout(hintTimer);
+		if (renderFrame !== undefined) cancelAnimationFrame(renderFrame);
 		mapEl?.removeEventListener('wheel', onWheel);
 		mapEl?.removeEventListener('touchstart', onTouchStart);
 		try {

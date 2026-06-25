@@ -7,6 +7,7 @@ export type ApiUser = {
 	isAdmin: boolean;
 	isActive: boolean;
 	role: string;
+	hasPassword: boolean;
 };
 
 export type NotificationItem = {

@@ -4,6 +4,7 @@
 	import { fetchMe, fetchProviders, login } from '$lib/api';
 	import { auth } from '$lib/auth.svelte';
 	import Icon from '$lib/Icon.svelte';
+	import { applyTheme, getInitialTheme, type Theme } from '$lib/theme';
 
 	let identifier = $state('');
 	let password = $state('');
@@ -11,6 +12,12 @@
 	let error = $state('');
 	let oidcEnabled = $state(false);
 	let oidcProviderName = $state('OIDC');
+	let theme = $state<Theme>('light');
+
+	function toggleTheme() {
+		theme = theme === 'dark' ? 'light' : 'dark';
+		applyTheme(theme);
+	}
 
 	onMount(async () => {
 		const me = await fetchMe();
@@ -19,6 +26,8 @@
 			await goto('/');
 			return;
 		}
+		theme = getInitialTheme();
+		applyTheme(theme);
 		try {
 			const providers = await fetchProviders();
 			oidcEnabled = providers.oidcEnabled;
@@ -43,7 +52,19 @@
 	}
 </script>
 
-<section class="grid min-h-screen w-full md:grid-cols-2">
+<section class="relative grid min-h-screen w-full md:grid-cols-2">
+	<!-- Theme toggle (always visible on login screen) -->
+	<div class="absolute right-4 top-4 z-10">
+		<button
+			type="button"
+			onclick={toggleTheme}
+			title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+			aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+			class="rounded-md border border-slate-300 p-2 text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+		>
+			<Icon name={theme === 'dark' ? 'sun' : 'moon'} class="h-5 w-5" />
+		</button>
+	</div>
 	<!-- Left: brand + welcome -->
 	<div
 		class="hidden flex-col justify-center gap-6 bg-gradient-to-br from-sky-700 to-slate-900 p-12 text-white md:flex"
@@ -128,8 +149,18 @@
 				</div>
 				<a
 					href="/api/v1/auth/oidc/login"
-					class="block rounded-md border border-slate-300 px-4 py-2 text-center text-sm hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+					class="flex items-center justify-center gap-2 rounded-md border border-slate-300 px-4 py-2 text-sm hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
 				>
+					<img
+						src="https://cdn.jsdelivr.net/gh/selfhst/icons@main/svg/authelia-dark.svg"
+						alt="Authelia"
+						class="h-5 w-5 dark:hidden"
+					/>
+					<img
+						src="https://cdn.jsdelivr.net/gh/selfhst/icons@main/svg/authelia-light.svg"
+						alt=""
+						class="hidden h-5 w-5 dark:block"
+					/>
 					Sign in with {oidcProviderName}
 				</a>
 			{/if}

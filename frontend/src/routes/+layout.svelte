@@ -195,7 +195,7 @@
 				class:-translate-x-full={!mobileOpen}
 			>
 				<div
-					class="flex h-14 shrink-0 items-center border-b border-slate-200 px-3 dark:border-slate-800"
+					class="flex h-14 shrink-0 items-center border-b border-slate-200 px-3 dark:border-slate-800 text-xl"
 					class:justify-center={!expanded}
 				>
 					<div class="flex min-w-0 items-center gap-2">
@@ -206,7 +206,7 @@
 					</div>
 				</div>
 
-				<nav class="flex-1 space-y-1 overflow-y-auto p-2 text-sm">
+				<nav class="flex-1 space-y-1 overflow-y-auto p-2 text-base">
 					{#each navItems as item (item.href)}
 						{#if !item.adminOnly || auth.user?.isAdmin}
 							{@const active =
@@ -241,7 +241,7 @@
 					{/each}
 				</nav>
 
-				<div class="shrink-0 space-y-1 border-t border-slate-200 p-2 text-sm dark:border-slate-800">
+				<div class="shrink-0 space-y-1 border-t border-slate-200 p-2 text-base dark:border-slate-800">
 					{#if auth.user?.isAdmin}
 						<a
 							href="/admin/settings"

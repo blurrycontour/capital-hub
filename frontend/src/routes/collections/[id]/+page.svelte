@@ -334,14 +334,6 @@
 								<Icon name="trash" class="h-4 w-4" /> Delete
 							</button>
 						</Dropdown>
-					{:else}
-						<span
-							class="inline-flex items-center gap-1.5 rounded-md bg-violet-100 px-2.5 py-1.5 text-xs font-medium text-violet-700 dark:bg-violet-950/40 dark:text-violet-300"
-							title={`Shared by ${collection.ownerName}`}
-						>
-							<Icon name="users" class="h-4 w-4" />
-							Shared · {collection.accessLevel === 'write' ? 'Can edit' : 'Read only'}
-						</span>
 					{/if}
 				</div>
 			</div>
@@ -362,19 +354,28 @@
 						<Icon name="users" class="h-3.5 w-3.5" />
 						Shared by {collection.ownerName}
 					</span>
-				{:else if collection.shareCount > 0}
+				{:else}
 					<span
-						class="inline-flex shrink-0 items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700 dark:bg-violet-950/40 dark:text-violet-300"
-						title={`Shared with ${collection.shareCount} ${collection.shareCount === 1 ? 'person' : 'people'}`}
+						class="inline-flex text-xs items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+						title="You own this collection"
 					>
-						<Icon name="users" class="h-3.5 w-3.5" />
-						Shared · {collection.shareCount} {collection.shareCount === 1 ? 'person' : 'people'}
+						<Icon name="user" class="h-3.5 w-3.5" />
+						Owned
 					</span>
+					{#if collection.shareCount > 0}
+						<span
+							class="inline-flex text-xs items-center gap-1 rounded-full bg-sky-100 px-2 py-0.5 font-medium text-sky-700 dark:bg-sky-950/40 dark:text-sky-300"
+							title={`Shared with ${collection.shareCount} ${collection.shareCount === 1 ? 'person' : 'people'}`}
+						>
+							<Icon name="users" class="h-3.5 w-3.5" />
+							Shared · {collection.shareCount} {collection.shareCount === 1 ? 'person' : 'people'}
+						</span>
+					{/if}
 				{/if}
 			</div>
 
 			{#if collection.description}
-				<p class="mt-2 text-sm text-slate-600 dark:text-slate-400">{collection.description}</p>
+				<p class="mt-2 break-words text-sm text-slate-600 dark:text-slate-400">{collection.description}</p>
 			{/if}
 			{#if collection.locationLat != null && collection.locationLng != null}
 				<p class="mt-2 inline-flex items-center gap-1 text-xs text-slate-500">

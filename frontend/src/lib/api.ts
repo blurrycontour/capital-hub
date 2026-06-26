@@ -129,13 +129,34 @@ export async function listNotifications(limit = 50): Promise<NotificationItem[]>
 	return body.notifications;
 }
 
+export async function getUnreadNotificationCount(): Promise<number> {
+	const res = await fetch('/api/v1/notifications/unread-count');
+	const body = await parseJSON<{ count: number }>(res);
+	return body.count;
+}
+
 export async function markNotificationRead(id: number): Promise<void> {
-	const csrf = await fetchCSRFToken();
-	const res = await fetch(`/api/v1/notifications/${id}/read`, {
-		method: 'POST',
-		headers: { 'X-CSRF-Token': csrf }
-	});
-	await parseJSON<{ ok: boolean }>(res);
+	await mutate<{ ok: boolean }>(`/api/v1/notifications/${id}/read`, 'POST');
+}
+
+export async function markNotificationUnread(id: number): Promise<void> {
+	await mutate<{ ok: boolean }>(`/api/v1/notifications/${id}/unread`, 'POST');
+}
+
+export async function deleteNotification(id: number): Promise<void> {
+	await mutate<{ ok: boolean }>(`/api/v1/notifications/${id}`, 'DELETE');
+}
+
+export async function markAllNotificationsRead(): Promise<void> {
+	await mutate<{ ok: boolean }>('/api/v1/notifications/read-all', 'POST');
+}
+
+export async function markAllNotificationsUnread(): Promise<void> {
+	await mutate<{ ok: boolean }>('/api/v1/notifications/unread-all', 'POST');
+}
+
+export async function deleteAllNotifications(): Promise<void> {
+	await mutate<{ ok: boolean }>('/api/v1/notifications', 'DELETE');
 }
 
 export async function listUsers(): Promise<ApiUser[]> {
@@ -508,20 +529,12 @@ export async function createItem(collectionId: number, payload: ItemInput): Prom
 }
 
 export async function updateItem(id: number, payload: ItemInput): Promise<Item> {
-	const body = await mutate<{ item: Item }>(
-		`/api/v1/items/${id}`,
-		'PATCH',
-		payload
-	);
+	const body = await mutate<{ item: Item }>(`/api/v1/items/${id}`, 'PATCH', payload);
 	return body.item;
 }
 
 export async function moveItem(id: number, collectionId: number): Promise<Item> {
-	const body = await mutate<{ item: Item }>(
-		`/api/v1/items/${id}/move`,
-		'POST',
-		{ collectionId }
-	);
+	const body = await mutate<{ item: Item }>(`/api/v1/items/${id}/move`, 'POST', { collectionId });
 	return body.item;
 }
 

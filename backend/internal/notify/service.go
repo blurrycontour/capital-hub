@@ -132,6 +132,100 @@ func (s *Service) MarkRead(ctx context.Context, userID, notificationID int64) er
 	return nil
 }
 
+// MarkUnread clears the read_at timestamp so the notification is unread again.
+func (s *Service) MarkUnread(ctx context.Context, userID, notificationID int64) error {
+	if userID == 0 || notificationID == 0 {
+		return fmt.Errorf("user id and notification id are required")
+	}
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE notifications SET read_at = NULL WHERE id = ? AND user_id = ?`,
+		notificationID, userID,
+	)
+	if err != nil {
+		return fmt.Errorf("mark notification unread: %w", err)
+	}
+	return nil
+}
+
+// DeleteNotification removes a single notification owned by userID.
+func (s *Service) DeleteNotification(ctx context.Context, userID, notificationID int64) error {
+	if userID == 0 || notificationID == 0 {
+		return fmt.Errorf("user id and notification id are required")
+	}
+	res, err := s.db.ExecContext(ctx,
+		`DELETE FROM notifications WHERE id = ? AND user_id = ?`,
+		notificationID, userID,
+	)
+	if err != nil {
+		return fmt.Errorf("delete notification: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("notification not found")
+	}
+	return nil
+}
+
+// MarkAllRead marks every unread notification for a user as read.
+func (s *Service) MarkAllRead(ctx context.Context, userID int64) error {
+	if userID == 0 {
+		return fmt.Errorf("user id is required")
+	}
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE notifications SET read_at = datetime('now') WHERE user_id = ? AND read_at IS NULL`,
+		userID,
+	)
+	if err != nil {
+		return fmt.Errorf("mark all read: %w", err)
+	}
+	return nil
+}
+
+// MarkAllUnread clears read_at for all notifications belonging to a user.
+func (s *Service) MarkAllUnread(ctx context.Context, userID int64) error {
+	if userID == 0 {
+		return fmt.Errorf("user id is required")
+	}
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE notifications SET read_at = NULL WHERE user_id = ?`,
+		userID,
+	)
+	if err != nil {
+		return fmt.Errorf("mark all unread: %w", err)
+	}
+	return nil
+}
+
+// DeleteAll removes all notifications for a user.
+func (s *Service) DeleteAll(ctx context.Context, userID int64) error {
+	if userID == 0 {
+		return fmt.Errorf("user id is required")
+	}
+	_, err := s.db.ExecContext(ctx,
+		`DELETE FROM notifications WHERE user_id = ?`,
+		userID,
+	)
+	if err != nil {
+		return fmt.Errorf("delete all notifications: %w", err)
+	}
+	return nil
+}
+
+// UnreadCount returns the number of unread notifications for a user.
+func (s *Service) UnreadCount(ctx context.Context, userID int64) (int, error) {
+	if userID == 0 {
+		return 0, fmt.Errorf("user id is required")
+	}
+	var count int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM notifications WHERE user_id = ? AND read_at IS NULL`,
+		userID,
+	).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count unread: %w", err)
+	}
+	return count, nil
+}
+
 func parseSQLiteTime(v string) (time.Time, error) {
 	v = strings.TrimSpace(v)
 	t, err := time.ParseInLocation("2006-01-02 15:04:05", v, time.UTC)

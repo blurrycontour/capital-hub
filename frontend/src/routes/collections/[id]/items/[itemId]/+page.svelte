@@ -482,7 +482,7 @@
 				<h1 class="break-words text-2xl font-bold">{item.name}</h1>
 
 				{#if item.description}
-					<p class="text-sm text-slate-600 dark:text-slate-400">{item.description}</p>
+					<p class="text-sm break-words text-slate-600 dark:text-slate-400">{item.description}</p>
 				{/if}
 
 				{#if item.locationLat != null && item.locationLng != null}

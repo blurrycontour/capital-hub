@@ -484,6 +484,48 @@ func (s *Service) ListShares(ctx context.Context, userID, collectionID int64) ([
 	return out, rows.Err()
 }
 
+// CollectionName returns the name of a collection without any permission check.
+// It is used internally for building notification messages.
+func (s *Service) CollectionName(ctx context.Context, collectionID int64) (string, error) {
+	var name string
+	err := s.db.QueryRowContext(ctx, `SELECT name FROM collections WHERE id = ?`, collectionID).Scan(&name)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	if err != nil {
+		return "", fmt.Errorf("lookup collection name: %w", err)
+	}
+	return name, nil
+}
+
+// CollectionAccessorIDs returns the owner's user ID together with the IDs of
+// all users the collection is shared with. Used to fan-out notifications.
+func (s *Service) CollectionAccessorIDs(ctx context.Context, collectionID int64) ([]int64, error) {
+	var ownerID int64
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT created_by FROM collections WHERE id = ?`, collectionID,
+	).Scan(&ownerID); err != nil {
+		return nil, fmt.Errorf("lookup collection owner: %w", err)
+	}
+	ids := []int64{ownerID}
+
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT user_id FROM collection_shares WHERE collection_id = ?`, collectionID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query shares: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var uid int64
+		if err := rows.Scan(&uid); err != nil {
+			return nil, fmt.Errorf("scan share: %w", err)
+		}
+		ids = append(ids, uid)
+	}
+	return ids, rows.Err()
+}
+
 // ShareCollection grants another user (by username or email) read or write
 // access to a collection owned by userID.
 func (s *Service) ShareCollection(ctx context.Context, userID, collectionID int64, identifier, access string) (*CollectionShare, error) {

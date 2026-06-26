@@ -1,10 +1,12 @@
 package httpapi
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -15,6 +17,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/aditya/capital-hub/internal/inventory"
+	"github.com/aditya/capital-hub/internal/notify"
 )
 
 // maxUploadBytes caps item image uploads at 10 MiB.
@@ -207,6 +210,30 @@ func (s *Server) handleShareCollection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"share": share})
+
+	// Notify the recipient asynchronously (non-fatal if it fails).
+	actorName := user.DisplayName
+	if actorName == "" {
+		actorName = user.Username
+	}
+	go func(collID int64, recipientID int64, actor, accessLevel string) {
+		ctx := context.Background()
+		colName, err := s.inventory.CollectionName(ctx, collID)
+		if err != nil {
+			return
+		}
+		accessLabel := "read only"
+		if accessLevel == "write" {
+			accessLabel = "can edit"
+		}
+		_ = s.notify.CreateInApp(ctx, notify.InAppInput{
+			UserID: recipientID,
+			Type:   "collection_shared",
+			Title:  fmt.Sprintf("%s shared a collection with you", actor),
+			Body:   fmt.Sprintf("%s shared \u201c%s\u201d with you (%s).", actor, colName, accessLabel),
+			Link:   fmt.Sprintf("/collections/%d", collID),
+		})
+	}(id, share.UserID, actorName, share.Access)
 }
 
 func (s *Server) handleUnshareCollection(w http.ResponseWriter, r *http.Request) {
@@ -306,6 +333,35 @@ func (s *Server) handleCreateItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"item": item})
+
+	// Notify all other users with access to the collection asynchronously.
+	actorName := user.DisplayName
+	if actorName == "" {
+		actorName = user.Username
+	}
+	go func(collID int64, creatorID int64, actor, itemName string) {
+		ctx := context.Background()
+		accessors, err := s.inventory.CollectionAccessorIDs(ctx, collID)
+		if err != nil {
+			return
+		}
+		colName, err := s.inventory.CollectionName(ctx, collID)
+		if err != nil {
+			return
+		}
+		for _, uid := range accessors {
+			if uid == creatorID {
+				continue // don't self-notify
+			}
+			_ = s.notify.CreateInApp(ctx, notify.InAppInput{
+				UserID: uid,
+				Type:   "item_added",
+				Title:  fmt.Sprintf("%s added a new item", actor),
+				Body:   fmt.Sprintf("%s added \u201c%s\u201d to \u201c%s\u201d.", actor, itemName, colName),
+				Link:   fmt.Sprintf("/collections/%d", collID),
+			})
+		}
+	}(collectionID, user.ID, actorName, item.Name)
 }
 
 func (s *Server) handleUpdateItem(w http.ResponseWriter, r *http.Request) {

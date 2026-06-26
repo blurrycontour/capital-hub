@@ -92,7 +92,13 @@ func (s *Server) routes() error {
 		api.Route("/notifications", func(n chi.Router) {
 			n.Use(s.requireAuth)
 			n.Get("/", s.handleListNotifications)
+			n.Get("/unread-count", s.handleUnreadCount)
+			n.With(s.requireCSRF).Post("/read-all", s.handleMarkAllNotificationsRead)
+			n.With(s.requireCSRF).Post("/unread-all", s.handleMarkAllNotificationsUnread)
+			n.With(s.requireCSRF).Delete("/", s.handleDeleteAllNotifications)
 			n.With(s.requireCSRF).Post("/{id}/read", s.handleMarkNotificationRead)
+			n.With(s.requireCSRF).Post("/{id}/unread", s.handleMarkNotificationUnread)
+			n.With(s.requireCSRF).Delete("/{id}", s.handleDeleteNotification)
 		})
 
 		api.Route("/collections", func(c chi.Router) {

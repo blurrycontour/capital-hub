@@ -7,6 +7,7 @@
 	import { applyTheme, getInitialTheme, type Theme } from '$lib/theme';
 	import { auth } from '$lib/auth.svelte';
 	import { breadcrumbs as crumbStore } from '$lib/breadcrumb.svelte';
+	import { notifCount } from '$lib/notifCount.svelte';
 	import Icon, { type IconName } from '$lib/Icon.svelte';
 	import { useRegisterSW } from 'virtual:pwa-register/svelte';
 
@@ -68,12 +69,6 @@
 
 	const isLoginRoute = $derived($page.url.pathname.startsWith('/login'));
 	const showChrome = $derived(auth.isAuthenticated && !isLoginRoute);
-	// Collapse to first + … + last-two when the trail is deep, keeping the bar compact.
-	const displayCrumbs = $derived.by(() =>
-		breadcrumbs.length > 3
-			? [breadcrumbs[0], { label: '\u2026', href: '' }, ...breadcrumbs.slice(-2)]
-			: breadcrumbs
-	);
 
 	onMount(() => {
 		theme = getInitialTheme();
@@ -104,7 +99,17 @@
 			authError = err instanceof Error ? err.message : 'Failed to load auth state';
 		}
 		guard();
+		if (auth.isAuthenticated) {
+			void notifCount.refresh();
+		}
 	}
+
+	// Poll for the unread notification count while signed in.
+	$effect(() => {
+		if (!auth.isAuthenticated) return;
+		const id = setInterval(() => void notifCount.refresh(), 60_000);
+		return () => clearInterval(id);
+	});
 
 	// Redirect unauthenticated users to the login page so nothing but the
 	// sign-in screen is reachable while signed out.
@@ -190,7 +195,7 @@
 				class:-translate-x-full={!mobileOpen}
 			>
 				<div
-					class="flex h-14 shrink-0 items-center border-b border-slate-200 px-3 dark:border-slate-800 text-xl"
+					class="flex h-14 shrink-0 items-center border-b border-slate-200 px-3 dark:border-slate-800"
 					class:justify-center={!expanded}
 				>
 					<div class="flex min-w-0 items-center gap-2">
@@ -201,7 +206,7 @@
 					</div>
 				</div>
 
-				<nav class="flex-1 space-y-1 overflow-y-auto p-2 text-base">
+				<nav class="flex-1 space-y-1 overflow-y-auto p-2 text-sm">
 					{#each navItems as item (item.href)}
 						{#if !item.adminOnly || auth.user?.isAdmin}
 							{@const active =
@@ -211,7 +216,7 @@
 							<a
 								href={item.href}
 								title={item.label}
-								class="flex items-center gap-3 rounded-md px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-800"
+								class="relative flex items-center gap-3 rounded-md px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-800"
 								class:justify-center={!expanded}
 								class:bg-slate-100={active}
 								class:dark:bg-slate-800={active}
@@ -219,13 +224,24 @@
 								class:text-sky-600={active}
 							>
 								<Icon name={item.icon} class="h-5 w-5 shrink-0" />
-								{#if expanded}<span class="truncate">{item.label}</span>{/if}
+								{#if expanded}
+									<span class="truncate">{item.label}</span>
+									{#if item.href === '/notifications' && notifCount.value > 0}
+										<span
+											class="ml-auto shrink-0 rounded-full bg-sky-600 px-1.5 py-0.5 text-xs font-semibold leading-none text-white"
+										>
+											{notifCount.value > 99 ? '99+' : notifCount.value}
+										</span>
+									{/if}
+								{:else if item.href === '/notifications' && notifCount.value > 0}
+									<span class="absolute right-1 top-1 h-2 w-2 rounded-full bg-sky-600"></span>
+								{/if}
 							</a>
 						{/if}
 					{/each}
 				</nav>
 
-				<div class="shrink-0 space-y-1 border-t border-slate-200 p-2 text-base dark:border-slate-800">
+				<div class="shrink-0 space-y-1 border-t border-slate-200 p-2 text-sm dark:border-slate-800">
 					{#if auth.user?.isAdmin}
 						<a
 							href="/admin/settings"
@@ -304,23 +320,19 @@
 							<Icon name="panel-left" class="h-5 w-5" />
 						</button>
 						<nav class="flex min-w-0 items-center gap-1 text-sm" aria-label="Breadcrumb">
-							{#each displayCrumbs as crumb, i (i)}
+							{#each breadcrumbs as crumb, i (crumb.href)}
 								{#if i > 0}
 									<Icon name="chevron-divider" class="h-3.5 w-3.5 shrink-0 text-slate-400" />
 								{/if}
-								{#if crumb.href === ''}
-									<span class="shrink-0 select-none text-slate-400" aria-hidden="true">…</span>
-								{:else if i === displayCrumbs.length - 1}
-									<span
-										class="max-w-[10rem] truncate font-medium text-slate-900 dark:text-slate-100"
-										title={crumb.label}
-									>{crumb.label}</span>
+								{#if i === breadcrumbs.length - 1}
+									<span class="truncate font-medium text-slate-900 dark:text-slate-100">{crumb.label}</span>
 								{:else}
 									<a
 										href={crumb.href}
-										class="max-w-[8rem] shrink-0 truncate rounded px-1 text-slate-500 hover:text-sky-600 hover:underline"
-										title={crumb.label}
-									>{crumb.label}</a>
+										class="shrink-0 rounded px-1 text-slate-500 hover:text-sky-600 hover:underline"
+									>
+										{crumb.label}
+									</a>
 								{/if}
 							{/each}
 						</nav>

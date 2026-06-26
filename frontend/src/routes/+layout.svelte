@@ -282,10 +282,10 @@
 							{/if}
 							{#if expanded}
 								<span class="min-w-0">
-									<span class="block truncate text-xs font-medium">
+									<span class="block truncate text-base font-medium">
 										{auth.user.displayName || auth.user.username}
 									</span>
-									<span class="block truncate text-xs text-slate-500">{auth.user.email}</span>
+									<span class="block truncate text-sm text-slate-500">{auth.user.email}</span>
 								</span>
 							{/if}
 						</a>

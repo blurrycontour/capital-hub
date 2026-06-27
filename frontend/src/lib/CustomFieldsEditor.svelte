@@ -15,19 +15,19 @@
 
 <div class="space-y-2">
 	{#each fields as field, i (i)}
-		<div class="flex items-center gap-2">
+		<div class="flex items-start gap-2">
 			<input
 				type="text"
 				bind:value={field.label}
 				placeholder="Label"
 				class="w-1/3 rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-800"
 			/>
-			<input
-				type="text"
+			<textarea
 				bind:value={field.value}
 				placeholder="Value"
-				class="flex-1 rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-800"
-			/>
+				rows="1"
+				class="flex-1 resize-y rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-800"
+			></textarea>
 			<button
 				type="button"
 				class="rounded p-1 text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-950/40"

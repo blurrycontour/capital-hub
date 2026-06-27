@@ -412,7 +412,7 @@
 					{#each collection.customFields as field (field.label + field.value)}
 						<div class="flex justify-between gap-3 border-b border-slate-100 py-1 text-sm dark:border-slate-800">
 							<dt class="text-slate-500">{field.label}</dt>
-							<dd class="font-medium">{field.value}</dd>
+							<dd class="font-medium whitespace-pre-wrap break-words text-right">{field.value}</dd>
 						</div>
 					{/each}
 				</dl>

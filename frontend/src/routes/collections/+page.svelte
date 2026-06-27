@@ -15,6 +15,7 @@
 	let collections = $state<Collection[]>([]);
 	let loading = $state(true);
 	let error = $state('');
+	let query = $state('');
 
 	// Card vs. list view (persisted).
 	const VIEW_KEY = 'ch-view-collections';
@@ -28,6 +29,18 @@
 			/* ignore */
 		}
 	}
+
+	const filtered = $derived.by(() => {
+		const q = query.trim().toLowerCase();
+		if (!q) return collections;
+		return collections.filter(
+			(c) =>
+				c.name.toLowerCase().includes(q) ||
+				c.description.toLowerCase().includes(q) ||
+				c.currency.toLowerCase().includes(q) ||
+				c.ownerName.toLowerCase().includes(q)
+		);
+	});
 
 	// Create modal state.
 	let createModal = $state(false);
@@ -166,9 +179,23 @@
 				New collection
 			</button>
 		</div>
-	{:else if view === 'list'}
-		<ul class="divide-y divide-slate-200 overflow-hidden rounded-lg border border-slate-200 dark:divide-slate-800 dark:border-slate-800">
-			{#each collections as c (c.id)}
+	{:else}
+		<input
+			type="search"
+			bind:value={query}
+			placeholder="Filter collections…"
+			class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+		/>
+
+		{#if filtered.length === 0}
+			<p
+				class="rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500 dark:border-slate-700"
+			>
+				No collections match “{query}”.
+			</p>
+		{:else if view === 'list'}
+			<ul class="divide-y divide-slate-200 overflow-hidden rounded-lg border border-slate-200 dark:divide-slate-800 dark:border-slate-800">
+				{#each filtered as c (c.id)}
 				<li>
 					<a
 						href={`/collections/${c.id}`}
@@ -233,7 +260,7 @@
 		</ul>
 	{:else}
 		<ul class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-			{#each collections as c (c.id)}
+			{#each filtered as c (c.id)}
 				<li class="min-w-0">
 					<a
 						href={`/collections/${c.id}`}
@@ -291,6 +318,7 @@
 				</li>
 			{/each}
 		</ul>
+		{/if}
 	{/if}
 </section>
 

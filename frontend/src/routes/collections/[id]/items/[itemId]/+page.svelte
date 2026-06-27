@@ -492,20 +492,6 @@
 					</p>
 				{/if}
 
-				<!-- Custom fields -->
-				{#if item.customFields.length > 0}
-					<dl class="grid gap-x-6 gap-y-1 sm:grid-cols-2">
-						{#each item.customFields as field, i (i)}
-							<div
-								class="flex justify-between gap-3 border-b border-slate-100 py-1 text-sm dark:border-slate-800"
-							>
-								<dt class="text-slate-500">{field.label}</dt>
-								<dd class="font-medium">{field.value}</dd>
-							</div>
-						{/each}
-					</dl>
-				{/if}
-
 				<!-- Stats -->
 				{#if stats}
 					<div class="grid gap-3 sm:grid-cols-3">
@@ -523,6 +509,21 @@
 				{/if}
 			</div>
 		</div>
+
+		<!-- Details (custom fields) -->
+		{#if item.customFields.length > 0}
+			<div class="space-y-3">
+				<h2 class="mb-3 text-lg font-semibold">Details</h2>
+				<dl class="grid gap-x-6 gap-y-2 sm:grid-cols-2">
+					{#each item.customFields as field (field.label + field.value)}
+						<div class="flex justify-between gap-3 border-b border-slate-100 py-1 text-sm dark:border-slate-800">
+							<dt class="text-slate-500">{field.label}</dt>
+							<dd class="font-medium">{field.value}</dd>
+						</div>
+					{/each}
+				</dl>
+			</div>
+		{/if}
 
 		<!-- Images -->
 		<div>

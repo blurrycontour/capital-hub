@@ -286,7 +286,7 @@
 		<p class="text-sm text-slate-500">Loading…</p>
 	{:else if collection}
 		<!-- Header -->
-		<div class="rounded-lg border border-slate-200 p-5 dark:border-slate-800">
+		<div class="space-y-3">
 			<div class="flex items-center justify-between gap-3">
 				<div class="flex min-w-0 items-center gap-2">
 					<span
@@ -406,7 +406,7 @@
 
 		<!-- Details (custom fields) -->
 		{#if collection.customFields.length > 0}
-			<div class="rounded-lg border border-slate-200 p-5 dark:border-slate-800">
+			<div class="space-y-3">
 				<h2 class="mb-3 text-lg font-semibold">Details</h2>
 				<dl class="grid gap-x-6 gap-y-2 sm:grid-cols-2">
 					{#each collection.customFields as field (field.label + field.value)}
@@ -581,13 +581,6 @@
 				<CustomFieldsEditor bind:fields={eFields} />
 			</div>
 		</div>
-		<label class="flex items-center gap-2 text-sm">
-			<input type="checkbox" bind:checked={eUseLocation} class="rounded" />
-			<span class="text-slate-600 dark:text-slate-400">Set a location</span>
-		</label>
-		{#if eUseLocation}
-			<LocationPicker bind:lat={eLat} bind:lng={eLng} bind:label={eLabel} />
-		{/if}
 	</div>
 	{#snippet footer()}
 		<button

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { auth } from '$lib/auth.svelte';
-	import { changePassword, updateProfile, uploadAvatar, getPreferences, updatePreferences, getVersion, requestAccountDeletion, confirmAccountDeletion } from '$lib/api';
+	import { changePassword, updateProfile, uploadAvatar, getPreferences, updatePreferences, setAmountDecimals, getVersion, requestAccountDeletion, confirmAccountDeletion, type UserPreferences } from '$lib/api';
 	import Icon from '$lib/Icon.svelte';
 	import Modal from '$lib/Modal.svelte';
 	import { goto } from '$app/navigation';
@@ -33,6 +33,12 @@
 	let savingPrefs = $state(false);
 	let prefsError = $state('');
 
+	// Display & notification preferences.
+	let amountDecimals = $state(0);
+	let notifyCollectionShared = $state(true);
+	let notifyItemAdded = $state(true);
+	let notifyEntryAdded = $state(true);
+
 	// Build version (baked at build time).
 	let appVersion = $state('');
 
@@ -40,6 +46,10 @@
 		try {
 			const prefs = await getPreferences();
 			includeSharedInStats = prefs.includeSharedInStats;
+			amountDecimals = prefs.amountDecimals;
+			notifyCollectionShared = prefs.notifyCollectionShared;
+			notifyItemAdded = prefs.notifyItemAdded;
+			notifyEntryAdded = prefs.notifyEntryAdded;
 		} catch {
 			/* keep default */
 		}
@@ -50,18 +60,49 @@
 		}
 	});
 
-	async function toggleIncludeShared() {
-		const next = !includeSharedInStats;
+	// Snapshot the current preference values into a payload for the API.
+	function currentPrefs(): UserPreferences {
+		return {
+			includeSharedInStats,
+			amountDecimals,
+			notifyCollectionShared,
+			notifyItemAdded,
+			notifyEntryAdded
+		};
+	}
+
+	// Persist the given preferences and reflect the server's normalized result
+	// back into local state (and apply the rounding precision app-wide).
+	async function savePreferences(next: UserPreferences) {
 		savingPrefs = true;
 		prefsError = '';
 		try {
-			const prefs = await updatePreferences({ includeSharedInStats: next });
+			const prefs = await updatePreferences(next);
 			includeSharedInStats = prefs.includeSharedInStats;
+			amountDecimals = prefs.amountDecimals;
+			notifyCollectionShared = prefs.notifyCollectionShared;
+			notifyItemAdded = prefs.notifyItemAdded;
+			notifyEntryAdded = prefs.notifyEntryAdded;
+			setAmountDecimals(prefs.amountDecimals);
 		} catch (err) {
 			prefsError = err instanceof Error ? err.message : 'Failed to update preference';
 		} finally {
 			savingPrefs = false;
 		}
+	}
+
+	async function toggleIncludeShared() {
+		await savePreferences({ ...currentPrefs(), includeSharedInStats: !includeSharedInStats });
+	}
+
+	async function setDecimals(n: number) {
+		await savePreferences({ ...currentPrefs(), amountDecimals: n });
+	}
+
+	async function toggleNotify(
+		key: 'notifyCollectionShared' | 'notifyItemAdded' | 'notifyEntryAdded'
+	) {
+		await savePreferences({ ...currentPrefs(), [key]: !currentPrefs()[key] });
 	}
 
 	// Account deletion flow (email-code confirmation).
@@ -508,6 +549,117 @@
 					<span
 						class={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
 							includeSharedInStats ? 'translate-x-5' : 'translate-x-0.5'
+						}`}
+					></span>
+				</button>
+			</div>
+
+			<div class="flex items-start justify-between gap-4 border-t border-slate-100 pt-4 dark:border-slate-800">
+				<div class="space-y-0.5">
+					<p class="text-sm font-medium">Money rounding</p>
+					<p class="text-sm text-slate-500">
+						Number of decimal places used when displaying amounts in stats, collections, items
+						and entries.
+					</p>
+				</div>
+				<select
+					aria-label="Money rounding decimal places"
+					disabled={savingPrefs}
+					value={amountDecimals}
+					onchange={(e) => setDecimals(Number((e.currentTarget as HTMLSelectElement).value))}
+					class="mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800"
+				>
+					<option value={0}>0 (whole numbers)</option>
+					<option value={1}>1 decimal place</option>
+					<option value={2}>2 decimal places</option>
+				</select>
+			</div>
+		</section>
+
+		<!-- Notification preferences -->
+		<section class="space-y-4 rounded-lg border border-slate-200 p-5 dark:border-slate-800">
+			<div class="flex items-center gap-2">
+				<Icon name="bell" class="h-5 w-5 text-slate-500" />
+				<h2 class="text-lg font-semibold">Notifications</h2>
+			</div>
+
+			<p class="text-sm text-slate-500">
+				Choose which events on collections shared with you create a notification.
+			</p>
+
+			<div class="flex items-start justify-between gap-4">
+				<div class="space-y-0.5">
+					<p class="text-sm font-medium">A collection is shared with me</p>
+					<p class="text-sm text-slate-500">
+						Notify me when someone shares one of their collections with me.
+					</p>
+				</div>
+				<button
+					type="button"
+					role="switch"
+					aria-checked={notifyCollectionShared}
+					aria-label="Notify when a collection is shared with me"
+					disabled={savingPrefs}
+					onclick={() => toggleNotify('notifyCollectionShared')}
+					class={`relative mt-1 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${
+						notifyCollectionShared ? 'bg-sky-600' : 'bg-slate-300 dark:bg-slate-700'
+					}`}
+				>
+					<span
+						class={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+							notifyCollectionShared ? 'translate-x-5' : 'translate-x-0.5'
+						}`}
+					></span>
+				</button>
+			</div>
+
+			<div class="flex items-start justify-between gap-4 border-t border-slate-100 pt-4 dark:border-slate-800">
+				<div class="space-y-0.5">
+					<p class="text-sm font-medium">An item is added to a shared collection</p>
+					<p class="text-sm text-slate-500">
+						Notify me when someone adds an item to a collection I have access to.
+					</p>
+				</div>
+				<button
+					type="button"
+					role="switch"
+					aria-checked={notifyItemAdded}
+					aria-label="Notify when an item is added to a shared collection"
+					disabled={savingPrefs}
+					onclick={() => toggleNotify('notifyItemAdded')}
+					class={`relative mt-1 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${
+						notifyItemAdded ? 'bg-sky-600' : 'bg-slate-300 dark:bg-slate-700'
+					}`}
+				>
+					<span
+						class={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+							notifyItemAdded ? 'translate-x-5' : 'translate-x-0.5'
+						}`}
+					></span>
+				</button>
+			</div>
+
+			<div class="flex items-start justify-between gap-4 border-t border-slate-100 pt-4 dark:border-slate-800">
+				<div class="space-y-0.5">
+					<p class="text-sm font-medium">An entry is made in a shared collection</p>
+					<p class="text-sm text-slate-500">
+						Notify me when someone records an entry on an item in a collection I have access to.
+					</p>
+				</div>
+				<button
+					type="button"
+					role="switch"
+					aria-checked={notifyEntryAdded}
+					aria-label="Notify when an entry is made in a shared collection"
+					disabled={savingPrefs}
+					onclick={() => toggleNotify('notifyEntryAdded')}
+					class={`relative mt-1 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${
+						notifyEntryAdded ? 'bg-sky-600' : 'bg-slate-300 dark:bg-slate-700'
+					}`}
+				>
+					<span
+						class={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+							notifyEntryAdded ? 'translate-x-5' : 'translate-x-0.5'
 						}`}
 					></span>
 				</button>

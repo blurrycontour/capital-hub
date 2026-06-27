@@ -87,6 +87,10 @@ export async function uploadAvatar(file: File): Promise<ApiUser> {
 
 export type UserPreferences = {
 	includeSharedInStats: boolean;
+	amountDecimals: number;
+	notifyCollectionShared: boolean;
+	notifyItemAdded: boolean;
+	notifyEntryAdded: boolean;
 };
 
 export async function getPreferences(): Promise<UserPreferences> {
@@ -513,6 +517,14 @@ export async function listItems(collectionId: number): Promise<Item[]> {
 	return body.items;
 }
 
+export type ItemWithCollection = Item & { collectionName: string };
+
+export async function listAllItems(): Promise<ItemWithCollection[]> {
+	const res = await fetch('/api/v1/items');
+	const body = await parseJSON<{ items: ItemWithCollection[] }>(res);
+	return body.items;
+}
+
 export async function getItem(id: number): Promise<Item> {
 	const res = await fetch(`/api/v1/items/${id}`);
 	const body = await parseJSON<{ item: Item }>(res);
@@ -670,14 +682,32 @@ export const CURRENCIES = [
 	'AED'
 ];
 
+// Number of decimal places used when formatting money. Configurable via user
+// preferences (0–2, default 0). Set globally once preferences load so every
+// formatCurrency call across the app reflects the user's choice.
+let amountDecimals = 0;
+
+export function setAmountDecimals(n: number): void {
+	amountDecimals = Math.min(2, Math.max(0, Math.trunc(n || 0)));
+}
+
+export function getAmountDecimals(): number {
+	return amountDecimals;
+}
+
 // Format a currency total for display.
 export function formatCurrency(amount: number, currency: string): string {
 	try {
 		return new Intl.NumberFormat(undefined, {
 			style: 'currency',
-			currency
+			currency,
+			minimumFractionDigits: amountDecimals,
+			maximumFractionDigits: amountDecimals
 		}).format(amount);
 	} catch {
-		return `${amount.toLocaleString()} ${currency}`;
+		return `${amount.toLocaleString(undefined, {
+			minimumFractionDigits: amountDecimals,
+			maximumFractionDigits: amountDecimals
+		})} ${currency}`;
 	}
 }

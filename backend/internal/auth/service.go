@@ -256,6 +256,66 @@ func (s *Service) SetStatsIncludeShared(ctx context.Context, userID int64, inclu
 	return nil
 }
 
+// Preferences holds the per-user UI and notification preferences.
+type Preferences struct {
+	IncludeSharedInStats   bool `json:"includeSharedInStats"`
+	AmountDecimals         int  `json:"amountDecimals"`
+	NotifyCollectionShared bool `json:"notifyCollectionShared"`
+	NotifyItemAdded        bool `json:"notifyItemAdded"`
+	NotifyEntryAdded       bool `json:"notifyEntryAdded"`
+}
+
+func clampDecimals(n int) int {
+	if n < 0 {
+		return 0
+	}
+	if n > 2 {
+		return 2
+	}
+	return n
+}
+
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// GetPreferences loads every preference for a user.
+func (s *Service) GetPreferences(ctx context.Context, userID int64) (Preferences, error) {
+	var p Preferences
+	var includeShared, notifShared, notifItem, notifEntry int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT include_shared_in_stats, amount_decimals, notify_collection_shared, notify_item_added, notify_entry_added
+		 FROM users WHERE id = ? LIMIT 1`, userID,
+	).Scan(&includeShared, &p.AmountDecimals, &notifShared, &notifItem, &notifEntry); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Preferences{}, errors.New("user not found")
+		}
+		return Preferences{}, fmt.Errorf("load preferences: %w", err)
+	}
+	p.IncludeSharedInStats = includeShared == 1
+	p.NotifyCollectionShared = notifShared == 1
+	p.NotifyItemAdded = notifItem == 1
+	p.NotifyEntryAdded = notifEntry == 1
+	p.AmountDecimals = clampDecimals(p.AmountDecimals)
+	return p, nil
+}
+
+// SetPreferences persists every preference for a user.
+func (s *Service) SetPreferences(ctx context.Context, userID int64, p Preferences) error {
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE users SET include_shared_in_stats = ?, amount_decimals = ?, notify_collection_shared = ?,
+		 notify_item_added = ?, notify_entry_added = ?, updated_at = datetime('now') WHERE id = ?`,
+		boolToInt(p.IncludeSharedInStats), clampDecimals(p.AmountDecimals), boolToInt(p.NotifyCollectionShared),
+		boolToInt(p.NotifyItemAdded), boolToInt(p.NotifyEntryAdded), userID,
+	); err != nil {
+		return fmt.Errorf("set preferences: %w", err)
+	}
+	return nil
+}
+
 // ListUsers returns all users ordered by creation date.
 func (s *Service) ListUsers(ctx context.Context) ([]User, error) {
 	rows, err := s.db.QueryContext(

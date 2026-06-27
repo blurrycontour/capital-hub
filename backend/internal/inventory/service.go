@@ -641,6 +641,80 @@ func (s *Service) ListItems(ctx context.Context, userID, collectionID int64) ([]
 	return out, rows.Err()
 }
 
+// ItemWithCollection is an item paired with the name of its owning collection.
+// Used for the cross-collection items listing.
+type ItemWithCollection struct {
+	Item
+	CollectionName string `json:"collectionName"`
+}
+
+const itemWithCollectionSelect = `
+SELECT i.id, i.collection_id, i.name, i.description, i.image_path, i.images,
+       i.location_lat, i.location_lng, i.location_label, i.attachments, i.custom_fields,
+       i.created_at, i.updated_at,
+       COALESCE(cu.display_name, cu.username, ''),
+       COALESCE(uu.display_name, uu.username, ''),
+       (SELECT COUNT(*) FROM entries e WHERE e.item_id = i.id),
+       c.name
+FROM items i
+JOIN collections c ON c.id = i.collection_id
+LEFT JOIN users cu ON cu.id = i.created_by
+LEFT JOIN users uu ON uu.id = i.updated_by
+`
+
+// ListAllItems returns every item across all collections the user can access.
+// When includeShared is true, items in collections shared with the user are
+// included as well.
+func (s *Service) ListAllItems(ctx context.Context, userID int64, includeShared bool) ([]ItemWithCollection, error) {
+	scope := "c.user_id = ?"
+	args := []any{userID}
+	if includeShared {
+		scope = "(c.user_id = ? OR EXISTS (SELECT 1 FROM collection_shares cs WHERE cs.collection_id = c.id AND cs.user_id = ?))"
+		args = []any{userID, userID}
+	}
+	rows, err := s.db.QueryContext(ctx,
+		itemWithCollectionSelect+` WHERE `+scope+` ORDER BY i.name COLLATE NOCASE ASC`,
+		args...,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list all items: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]ItemWithCollection, 0)
+	for rows.Next() {
+		var iw ItemWithCollection
+		var images, attachments, customFields string
+		if err := rows.Scan(&iw.ID, &iw.CollectionID, &iw.Name, &iw.Description, &iw.ImagePath, &images,
+			&iw.LocationLat, &iw.LocationLng, &iw.LocationLabel, &attachments, &customFields,
+			&iw.CreatedAt, &iw.UpdatedAt, &iw.CreatedBy, &iw.UpdatedBy, &iw.EntryCount, &iw.CollectionName); err != nil {
+			return nil, fmt.Errorf("scan item: %w", err)
+		}
+		iw.Images = unmarshalStringList(images)
+		iw.Attachments = unmarshalAttachments(attachments)
+		iw.CustomFields = unmarshalCustomFields(customFields)
+		out = append(out, iw)
+	}
+	return out, rows.Err()
+}
+
+// ItemCollectionAndName returns the owning collection ID and the name of an
+// item without any permission check. Used for building notifications.
+func (s *Service) ItemCollectionAndName(ctx context.Context, itemID int64) (int64, string, error) {
+	var collID int64
+	var name string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT collection_id, name FROM items WHERE id = ?`, itemID,
+	).Scan(&collID, &name)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, "", ErrNotFound
+	}
+	if err != nil {
+		return 0, "", fmt.Errorf("lookup item: %w", err)
+	}
+	return collID, name, nil
+}
+
 // GetItem returns a single item the user owns or has been shared.
 func (s *Service) GetItem(ctx context.Context, userID, id int64) (*Item, error) {
 	row := s.db.QueryRowContext(ctx, itemSelect+` WHERE i.id = ?`, id)

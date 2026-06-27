@@ -95,6 +95,13 @@
 	let deleteEntryTarget = $state<Entry | null>(null);
 	let deletingEntry = $state(false);
 
+	// Expanded entry row (shows full note + edit/delete actions).
+	let expandedEntryId = $state<number | null>(null);
+
+	function toggleExpand(id: number) {
+		expandedEntryId = expandedEntryId === id ? null : id;
+	}
+
 	// Entry sorting
 	let sort = $state<{ key: 'occurredOn' | 'name' | 'amount'; dir: 'asc' | 'desc' }>({
 		key: 'occurredOn',
@@ -378,12 +385,24 @@
 	async function onEntryAttachmentChange(e: Event) {
 		const input = e.target as HTMLInputElement;
 		const file = input.files?.[0];
-		if (!file || !editingEntry) return;
+		if (!file || !item) return;
 		uploadingEntryAttachment = true;
 		error = '';
 		try {
+			// During the "add entry" flow there is no entry yet to attach to, so
+			// persist the entry first (using the values entered so far), then upload
+			// the attachment against the freshly created entry.
+			if (!editingEntry) {
+				editingEntry = await createEntry(item.id, {
+					name: enName.trim(),
+					amount: Number(enAmount),
+					note: enNote.trim(),
+					occurredOn: enDate,
+					attachments: []
+				});
+			}
 			editingEntry = await uploadEntryAttachment(editingEntry.id, file);
-			if (item) entries = await listEntries(item.id);
+			[entries, stats] = await Promise.all([listEntries(item.id), getItemStats(item.id)]);
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to upload attachment';
 		} finally {
@@ -611,7 +630,7 @@
 			<div class="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800">
 				<table class="w-full text-sm">
 					<thead
-						class="bg-slate-50 text-left text-xs uppercase text-slate-500 dark:bg-slate-800/50"
+						class="bg-slate-50 text-left text-xs text-slate-500 dark:bg-slate-800/50"
 					>
 						<tr>
 							<th class="px-3 py-2 font-medium">
@@ -644,8 +663,7 @@
 									{/if}
 								</button>
 							</th>
-							<th class="px-3 py-2 font-medium">Note</th>
-							<th class="px-3 py-2 text-right font-medium">
+							<th class="px-3 py-2 font-medium">
 								<button
 									type="button"
 									class="ml-auto inline-flex items-center gap-1 hover:text-slate-700 dark:hover:text-slate-300"
@@ -660,49 +678,104 @@
 									{/if}
 								</button>
 							</th>
-							<th class="px-3 py-2"></th>
+							<th class="px-3 py-2 font-medium">Note</th>
+							<th class="px-3 py-2 font-medium">
+								<Icon name="photo" class="mx-auto h-4 w-4" />
+								<span class="sr-only">Attachments</span>
+							</th>
+							<th class="w-8 px-3 py-2"></th>
 						</tr>
 					</thead>
 					<tbody class="divide-y divide-slate-100 dark:divide-slate-800">
 						{#each sortedEntries as entry (entry.id)}
-							<tr class="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+							{@const isOpen = expandedEntryId === entry.id}
+							<tr
+								class="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40"
+								role="button"
+								tabindex="0"
+								aria-expanded={isOpen}
+								onclick={() => toggleExpand(entry.id)}
+								onkeydown={(e) => {
+									if (e.key === 'Enter' || e.key === ' ') {
+										e.preventDefault();
+										toggleExpand(entry.id);
+									}
+								}}
+							>
 								<td class="px-3 py-2 whitespace-nowrap">{entry.occurredOn}</td>
-								<td class="px-3 py-2 font-medium">
-									{entry.name || '—'}
-									{#if entry.attachments.length > 0}
-										<span class="ml-1 inline-flex items-center gap-0.5 text-xs text-slate-400">
-											<Icon name="photo" class="h-3.5 w-3.5" />
-											{entry.attachments.length}
-										</span>
-									{/if}
-								</td>
-								<td class="px-3 py-2 text-slate-600 dark:text-slate-400">{entry.note}</td>
-								<td class="px-3 py-2 text-right font-medium whitespace-nowrap">
+								<td class="px-3 py-2 font-medium">{entry.name || '—'}</td>
+								<td class="px-3 py-2 font-medium whitespace-nowrap">
 									{formatCurrency(entry.amount, entry.currency)}
 								</td>
-								<td class="px-3 py-2">
-									<div class="flex items-center justify-end gap-1">
-										{#if canWrite}
-											<button
-												type="button"
-												class="rounded p-1 text-slate-500 hover:bg-slate-200 hover:text-slate-700 dark:hover:bg-slate-700"
-												aria-label="Edit entry"
-												onclick={() => openEditEntry(entry)}
-											>
-												<Icon name="pencil" class="h-4 w-4" />
-											</button>
-											<button
-												type="button"
-												class="rounded p-1 text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-950/40"
-												aria-label="Delete entry"
-												onclick={() => (deleteEntryTarget = entry)}
-											>
-												<Icon name="trash" class="h-4 w-4" />
-											</button>
-										{/if}
-									</div>
+								<td class="max-w-[1px] px-3 py-2 text-slate-600 dark:text-slate-400">
+									<span class="block truncate">{entry.note}</span>
+								</td>
+								<td class="px-3 py-2 text-center text-slate-500">
+									{#if entry.attachments.length > 0}
+										{entry.attachments.length}
+									{:else}
+										<span class="text-slate-300 dark:text-slate-600">—</span>
+									{/if}
+								</td>
+								<td class="px-3 py-2 text-right text-slate-400">
+									<Icon
+										name="chevron-down"
+										class={`h-4 w-4 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+									/>
 								</td>
 							</tr>
+							{#if isOpen}
+								<tr class="bg-slate-50/60 dark:bg-slate-800/30">
+									<td colspan="6" class="px-3 py-3">
+										<div class="space-y-3">
+											<div>
+												<p class="text-xs font-medium uppercase text-slate-400">Note</p>
+												<p class="mt-0.5 text-sm whitespace-pre-wrap text-slate-600 dark:text-slate-300">
+													{entry.note || '—'}
+												</p>
+											</div>
+											{#if entry.attachments.length > 0}
+												<div>
+													<p class="text-xs font-medium uppercase text-slate-400">Attachments</p>
+													<ul class="mt-1 flex flex-wrap gap-2">
+														{#each entry.attachments as att (att.path)}
+															<li>
+																<a
+																	href={att.path}
+																	target="_blank"
+																	rel="noopener noreferrer"
+																	class="inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-2 py-1 text-xs hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+																>
+																	<Icon name="photo" class="h-3.5 w-3.5 text-slate-400" />
+																	{att.name}
+																</a>
+															</li>
+														{/each}
+													</ul>
+												</div>
+											{/if}
+											{#if canWrite}
+												<div class="flex items-center gap-2">
+													<button
+														type="button"
+														class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+														onclick={() => openEditEntry(entry)}
+													>
+														<Icon name="pencil" class="h-4 w-4" /> Edit
+													</button>
+													<button
+														type="button"
+														class="inline-flex items-center gap-1.5 rounded-md border border-rose-300 px-2.5 py-1.5 text-sm text-rose-600 hover:bg-rose-50 dark:border-rose-900/60 dark:text-rose-400 dark:hover:bg-rose-950/40"
+														onclick={() => (deleteEntryTarget = entry)}
+													>
+														<Icon name="trash" class="h-4 w-4" /> Delete
+													</button>
+												</div>
+											{/if}
+										</div>
+									</td>
+								</tr>
+							{/if}
 						{/each}
 					</tbody>
 				</table>
@@ -821,15 +894,16 @@
 					type="button"
 					class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100 disabled:opacity-60 dark:border-slate-700 dark:hover:bg-slate-800"
 					onclick={() => entryAttachInput?.click()}
-					disabled={!editingEntry || uploadingEntryAttachment}
-					title={editingEntry ? '' : 'Save the entry first to add attachments'}
+					disabled={uploadingEntryAttachment}
 				>
 					<Icon name="plus" class="h-3.5 w-3.5" />
 					{uploadingEntryAttachment ? 'Uploading…' : 'Add'}
 				</button>
 			</div>
 			{#if !editingEntry}
-				<p class="mt-1 text-xs text-slate-500">Save the entry first to attach files.</p>
+				<p class="mt-1 text-xs text-slate-500">
+					Adding a file will save this entry automatically.
+				</p>
 			{:else if editingEntry.attachments.length === 0}
 				<p class="mt-1 text-xs text-slate-500">No attachments.</p>
 			{:else}

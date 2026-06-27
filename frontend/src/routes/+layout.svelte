@@ -10,6 +10,7 @@
 	import { notifCount } from '$lib/notifCount.svelte';
 	import Icon, { type IconName } from '$lib/Icon.svelte';
 	import { useRegisterSW } from 'virtual:pwa-register/svelte';
+	import { getPreferences, setAmountDecimals } from '$lib/api';
 
 	let { children } = $props();
 	let theme = $state<Theme>('light');
@@ -31,6 +32,7 @@
 	const navItems: NavItem[] = [
 		{ href: '/', label: 'Dashboard', icon: 'dashboard' },
 		{ href: '/collections', label: 'Collections', icon: 'collections' },
+		{ href: '/items', label: 'Items', icon: 'cube' },
 		{ href: '/search', label: 'Search', icon: 'search' },
 		{ href: '/notifications', label: 'Notifications', icon: 'bell' }
 	];
@@ -101,6 +103,18 @@
 		guard();
 		if (auth.isAuthenticated) {
 			void notifCount.refresh();
+			void loadPreferences();
+		}
+	}
+
+	// Load user preferences (currently the money rounding precision) and apply
+	// them globally so every currency value renders consistently.
+	async function loadPreferences() {
+		try {
+			const prefs = await getPreferences();
+			setAmountDecimals(prefs.amountDecimals);
+		} catch {
+			// Non-fatal: fall back to the default precision.
 		}
 	}
 

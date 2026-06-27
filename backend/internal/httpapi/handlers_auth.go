@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aditya/capital-hub/internal/auth"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -75,23 +76,19 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"user": user})
 }
 
-type preferencesResponse struct {
-	IncludeSharedInStats bool `json:"includeSharedInStats"`
-}
-
 func (s *Server) handleGetPreferences(w http.ResponseWriter, r *http.Request) {
 	user := userFromContext(r)
 	if user == nil {
 		writeAPIError(w, http.StatusUnauthorized, "authentication required")
 		return
 	}
-	include, err := s.auth.StatsIncludeShared(r.Context(), user.ID)
+	prefs, err := s.auth.GetPreferences(r.Context(), user.ID)
 	if err != nil {
 		s.logger.ErrorContext(r.Context(), "load preferences", "error", err)
 		writeAPIError(w, http.StatusInternalServerError, "failed to load preferences")
 		return
 	}
-	writeJSON(w, http.StatusOK, preferencesResponse{IncludeSharedInStats: include})
+	writeJSON(w, http.StatusOK, prefs)
 }
 
 func (s *Server) handleUpdatePreferences(w http.ResponseWriter, r *http.Request) {
@@ -100,17 +97,23 @@ func (s *Server) handleUpdatePreferences(w http.ResponseWriter, r *http.Request)
 		writeAPIError(w, http.StatusUnauthorized, "authentication required")
 		return
 	}
-	var req preferencesResponse
+	var req auth.Preferences
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeAPIError(w, http.StatusBadRequest, "invalid json payload")
 		return
 	}
-	if err := s.auth.SetStatsIncludeShared(r.Context(), user.ID, req.IncludeSharedInStats); err != nil {
+	if err := s.auth.SetPreferences(r.Context(), user.ID, req); err != nil {
 		s.logger.ErrorContext(r.Context(), "update preferences", "error", err)
 		writeAPIError(w, http.StatusInternalServerError, "failed to update preferences")
 		return
 	}
-	writeJSON(w, http.StatusOK, preferencesResponse{IncludeSharedInStats: req.IncludeSharedInStats})
+	prefs, err := s.auth.GetPreferences(r.Context(), user.ID)
+	if err != nil {
+		s.logger.ErrorContext(r.Context(), "load preferences", "error", err)
+		writeAPIError(w, http.StatusInternalServerError, "failed to load preferences")
+		return
+	}
+	writeJSON(w, http.StatusOK, prefs)
 }
 
 type updateProfileRequest struct {

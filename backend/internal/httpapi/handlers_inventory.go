@@ -23,6 +23,26 @@ import (
 // maxUploadBytes caps item image uploads at 10 MiB.
 const maxUploadBytes = 10 << 20
 
+// wantsNotification reports whether the recipient has opted in to a given
+// notification kind. It defaults to true when the preference cannot be loaded
+// so notifications are not silently dropped on transient errors.
+func (s *Server) wantsNotification(ctx context.Context, userID int64, kind string) bool {
+	prefs, err := s.auth.GetPreferences(ctx, userID)
+	if err != nil {
+		return true
+	}
+	switch kind {
+	case "collection_shared":
+		return prefs.NotifyCollectionShared
+	case "item_added":
+		return prefs.NotifyItemAdded
+	case "entry_added":
+		return prefs.NotifyEntryAdded
+	default:
+		return true
+	}
+}
+
 func (s *Server) pathID(r *http.Request) (int64, bool) {
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil || id <= 0 {
@@ -218,6 +238,9 @@ func (s *Server) handleShareCollection(w http.ResponseWriter, r *http.Request) {
 	}
 	go func(collID int64, recipientID int64, actor, accessLevel string) {
 		ctx := context.Background()
+		if !s.wantsNotification(ctx, recipientID, "collection_shared") {
+			return
+		}
 		colName, err := s.inventory.CollectionName(ctx, collID)
 		if err != nil {
 			return
@@ -296,6 +319,17 @@ func (s *Server) handleListItems(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
+// handleListAllItems returns every item the user can access across collections.
+func (s *Server) handleListAllItems(w http.ResponseWriter, r *http.Request) {
+	user := userFromContext(r)
+	items, err := s.inventory.ListAllItems(r.Context(), user.ID, true)
+	if err != nil {
+		s.writeInventoryError(w, r, err, "list all items")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
 func (s *Server) handleGetItem(w http.ResponseWriter, r *http.Request) {
 	user := userFromContext(r)
 	id, ok := s.pathID(r)
@@ -352,6 +386,9 @@ func (s *Server) handleCreateItem(w http.ResponseWriter, r *http.Request) {
 		for _, uid := range accessors {
 			if uid == creatorID {
 				continue // don't self-notify
+			}
+			if !s.wantsNotification(ctx, uid, "item_added") {
+				continue
 			}
 			_ = s.notify.CreateInApp(ctx, notify.InAppInput{
 				UserID: uid,
@@ -677,6 +714,48 @@ func (s *Server) handleCreateEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"entry": entry})
+
+	// Notify all other users with access to the collection asynchronously.
+	actorName := user.DisplayName
+	if actorName == "" {
+		actorName = user.Username
+	}
+	go func(itmID int64, creatorID int64, actor, entryName string) {
+		ctx := context.Background()
+		collID, itemName, err := s.inventory.ItemCollectionAndName(ctx, itmID)
+		if err != nil {
+			return
+		}
+		accessors, err := s.inventory.CollectionAccessorIDs(ctx, collID)
+		if err != nil {
+			return
+		}
+		colName, err := s.inventory.CollectionName(ctx, collID)
+		if err != nil {
+			return
+		}
+		label := strings.TrimSpace(entryName)
+		if label == "" {
+			label = "an entry"
+		} else {
+			label = "\u201c" + label + "\u201d"
+		}
+		for _, uid := range accessors {
+			if uid == creatorID {
+				continue // don't self-notify
+			}
+			if !s.wantsNotification(ctx, uid, "entry_added") {
+				continue
+			}
+			_ = s.notify.CreateInApp(ctx, notify.InAppInput{
+				UserID: uid,
+				Type:   "entry_added",
+				Title:  fmt.Sprintf("%s added an entry", actor),
+				Body:   fmt.Sprintf("%s added %s to \u201c%s\u201d in \u201c%s\u201d.", actor, label, itemName, colName),
+				Link:   fmt.Sprintf("/collections/%d/items/%d", collID, itmID),
+			})
+		}
+	}(itemID, user.ID, actorName, entry.Name)
 }
 
 func (s *Server) handleUpdateEntry(w http.ResponseWriter, r *http.Request) {

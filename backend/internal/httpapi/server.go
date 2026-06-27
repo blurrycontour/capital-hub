@@ -118,6 +118,7 @@ func (s *Server) routes() error {
 
 		api.Route("/items", func(it chi.Router) {
 			it.Use(s.requireAuth)
+			it.Get("/", s.handleListAllItems)
 			it.Get("/{id}", s.handleGetItem)
 			it.With(s.requireCSRF, s.requireNotReader).Patch("/{id}", s.handleUpdateItem)
 			it.With(s.requireCSRF, s.requireNotReader).Post("/{id}/move", s.handleMoveItem)

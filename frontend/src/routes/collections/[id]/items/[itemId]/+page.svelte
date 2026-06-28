@@ -20,7 +20,9 @@
 		uploadItemImage,
 		deleteItemImage,
 		uploadItemAttachment,
+		deleteItemAttachment,
 		uploadEntryAttachment,
+		deleteEntryAttachment,
 		getItemStats,
 		getCollection,
 		listEntries,
@@ -334,6 +336,19 @@
 		}
 	}
 
+	async function onDeleteItemAttachment(path: string) {
+		if (!item) return;
+		uploadingAttachment = true;
+		error = '';
+		try {
+			item = await deleteItemAttachment(item.id, path);
+		} catch (err) {
+			error = err instanceof Error ? err.message : 'Failed to delete attachment';
+		} finally {
+			uploadingAttachment = false;
+		}
+	}
+
 	function todayISO() {
 		return new Date().toISOString().slice(0, 10);
 	}
@@ -408,6 +423,20 @@
 		} finally {
 			uploadingEntryAttachment = false;
 			input.value = '';
+		}
+	}
+
+	async function onDeleteEntryAttachment(path: string) {
+		if (!editingEntry || !item) return;
+		uploadingEntryAttachment = true;
+		error = '';
+		try {
+			editingEntry = await deleteEntryAttachment(editingEntry.id, path);
+			[entries, stats] = await Promise.all([listEntries(item.id), getItemStats(item.id)]);
+		} catch (err) {
+			error = err instanceof Error ? err.message : 'Failed to delete attachment';
+		} finally {
+			uploadingEntryAttachment = false;
 		}
 	}
 
@@ -590,16 +619,29 @@
 			{:else}
 				<ul class="flex flex-wrap gap-2">
 					{#each item.attachments as att (att.path)}
-						<li>
+						<li
+							class="inline-flex items-center gap-1 rounded-md border border-slate-200 pr-1 text-sm dark:border-slate-800"
+						>
 							<a
 								href={att.path}
 								target="_blank"
 								rel="noopener noreferrer"
-								class="inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-2.5 py-1.5 text-sm hover:bg-slate-100 dark:border-slate-800 dark:hover:bg-slate-800"
+								class="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 hover:bg-slate-100 dark:hover:bg-slate-800"
 							>
 								<Icon name="photo" class="h-4 w-4 text-slate-400" />
 								{att.name}
 							</a>
+							{#if canWrite}
+								<button
+									type="button"
+									class="rounded p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-60 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
+									aria-label="Delete attachment"
+									onclick={() => onDeleteItemAttachment(att.path)}
+									disabled={uploadingAttachment}
+								>
+									<Icon name="close" class="h-4 w-4" />
+								</button>
+							{/if}
 						</li>
 					{/each}
 				</ul>
@@ -909,16 +951,27 @@
 			{:else}
 				<ul class="mt-1 flex flex-wrap gap-2">
 					{#each editingEntry.attachments as att (att.path)}
-						<li>
+						<li
+							class="inline-flex items-center gap-1 rounded-md border border-slate-200 pr-0.5 text-xs dark:border-slate-800"
+						>
 							<a
 								href={att.path}
 								target="_blank"
 								rel="noopener noreferrer"
-								class="inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-2 py-1 text-xs hover:bg-slate-100 dark:border-slate-800 dark:hover:bg-slate-800"
+								class="inline-flex items-center gap-1.5 rounded-md px-2 py-1 hover:bg-slate-100 dark:hover:bg-slate-800"
 							>
 								<Icon name="photo" class="h-3.5 w-3.5 text-slate-400" />
 								{att.name}
 							</a>
+							<button
+								type="button"
+								class="rounded p-0.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-60 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
+								aria-label="Delete attachment"
+								onclick={() => onDeleteEntryAttachment(att.path)}
+								disabled={uploadingEntryAttachment}
+							>
+								<Icon name="close" class="h-3.5 w-3.5" />
+							</button>
 						</li>
 					{/each}
 				</ul>

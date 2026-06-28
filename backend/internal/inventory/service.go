@@ -848,6 +848,32 @@ func (s *Service) AddItemAttachment(ctx context.Context, userID, id int64, att A
 	return s.GetItem(ctx, userID, id)
 }
 
+// RemoveItemAttachment removes an attachment (matched by path) from an owned
+// item and returns the refreshed record.
+func (s *Service) RemoveItemAttachment(ctx context.Context, userID, id int64, path string) (*Item, error) {
+	if err := s.requireItemWrite(ctx, userID, id); err != nil {
+		return nil, err
+	}
+	item, err := s.GetItem(ctx, userID, id)
+	if err != nil {
+		return nil, err
+	}
+	next := make([]Attachment, 0, len(item.Attachments))
+	for _, a := range item.Attachments {
+		if a.Path != path {
+			next = append(next, a)
+		}
+	}
+	_, err = s.db.ExecContext(ctx,
+		`UPDATE items SET attachments = ?, updated_at = datetime('now'), updated_by = ? WHERE id = ?`,
+		marshalJSONField(normalizeAttachments(next)), userID, id,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("remove item attachment: %w", err)
+	}
+	return s.GetItem(ctx, userID, id)
+}
+
 // AddItemImage appends an uploaded image to an owned item. The first image
 // also becomes the cover (image_path) used for thumbnails.
 func (s *Service) AddItemImage(ctx context.Context, userID, id int64, imagePath string) (*Item, error) {
@@ -1101,6 +1127,32 @@ func (s *Service) AddEntryAttachment(ctx context.Context, userID, id int64, att 
 	)
 	if err != nil {
 		return nil, fmt.Errorf("add entry attachment: %w", err)
+	}
+	return s.GetEntry(ctx, userID, id)
+}
+
+// RemoveEntryAttachment removes an attachment (matched by path) from an entry
+// and returns the refreshed record.
+func (s *Service) RemoveEntryAttachment(ctx context.Context, userID, id int64, path string) (*Entry, error) {
+	entry, err := s.GetEntry(ctx, userID, id)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.requireItemWrite(ctx, userID, entry.ItemID); err != nil {
+		return nil, err
+	}
+	next := make([]Attachment, 0, len(entry.Attachments))
+	for _, a := range entry.Attachments {
+		if a.Path != path {
+			next = append(next, a)
+		}
+	}
+	_, err = s.db.ExecContext(ctx,
+		`UPDATE entries SET attachments = ?, updated_at = datetime('now'), updated_by = ? WHERE id = ?`,
+		marshalJSONField(normalizeAttachments(next)), userID, id,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("remove entry attachment: %w", err)
 	}
 	return s.GetEntry(ctx, userID, id)
 }

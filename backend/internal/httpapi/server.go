@@ -126,6 +126,7 @@ func (s *Server) routes() error {
 			it.With(s.requireCSRF, s.requireNotReader).Post("/{id}/image", s.handleUploadItemImage)
 			it.With(s.requireCSRF, s.requireNotReader).Delete("/{id}/image", s.handleDeleteItemImage)
 			it.With(s.requireCSRF, s.requireNotReader).Post("/{id}/attachments", s.handleUploadItemAttachment)
+			it.With(s.requireCSRF, s.requireNotReader).Delete("/{id}/attachments", s.handleDeleteItemAttachment)
 			it.Get("/{id}/stats", s.handleItemStats)
 			it.Get("/{id}/entries", s.handleListEntries)
 			it.With(s.requireCSRF, s.requireNotReader).Post("/{id}/entries", s.handleCreateEntry)
@@ -136,6 +137,7 @@ func (s *Server) routes() error {
 			e.With(s.requireCSRF, s.requireNotReader).Patch("/{id}", s.handleUpdateEntry)
 			e.With(s.requireCSRF, s.requireNotReader).Delete("/{id}", s.handleDeleteEntry)
 			e.With(s.requireCSRF, s.requireNotReader).Post("/{id}/attachments", s.handleUploadEntryAttachment)
+			e.With(s.requireCSRF, s.requireNotReader).Delete("/{id}/attachments", s.handleDeleteEntryAttachment)
 		})
 
 		api.With(s.requireAuth).Get("/search", s.handleSearch)

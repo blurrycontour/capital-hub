@@ -591,6 +591,11 @@ export async function uploadItemAttachment(id: number, file: File): Promise<Item
 	return body.item;
 }
 
+export async function deleteItemAttachment(id: number, path: string): Promise<Item> {
+	const body = await mutate<{ item: Item }>(`/api/v1/items/${id}/attachments`, 'DELETE', { path });
+	return body.item;
+}
+
 // Entries
 
 export async function listEntries(itemId: number): Promise<Entry[]> {
@@ -623,6 +628,13 @@ export async function uploadEntryAttachment(id: number, file: File): Promise<Ent
 		body: form
 	});
 	const body = await parseJSON<{ entry: Entry }>(res);
+	return body.entry;
+}
+
+export async function deleteEntryAttachment(id: number, path: string): Promise<Entry> {
+	const body = await mutate<{ entry: Entry }>(`/api/v1/entries/${id}/attachments`, 'DELETE', {
+		path
+	});
 	return body.entry;
 }
 

@@ -603,6 +603,31 @@ func (s *Server) handleUploadItemAttachment(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, map[string]any{"item": item})
 }
 
+// handleDeleteItemAttachment removes an attachment from an item and deletes the
+// underlying file.
+func (s *Server) handleDeleteItemAttachment(w http.ResponseWriter, r *http.Request) {
+	user := userFromContext(r)
+	id, ok := s.pathID(r)
+	if !ok {
+		writeAPIError(w, http.StatusBadRequest, "invalid item id")
+		return
+	}
+	var req struct {
+		Path string `json:"path"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Path) == "" {
+		writeAPIError(w, http.StatusBadRequest, "invalid json payload")
+		return
+	}
+	item, err := s.inventory.RemoveItemAttachment(r.Context(), user.ID, id, req.Path)
+	if err != nil {
+		s.writeInventoryError(w, r, err, "delete attachment")
+		return
+	}
+	_ = os.Remove(filepath.Join(s.cfg.UploadsDir(), filepath.Base(req.Path)))
+	writeJSON(w, http.StatusOK, map[string]any{"item": item})
+}
+
 // handleUploadEntryAttachment stores a file and appends it to an entry.
 func (s *Server) handleUploadEntryAttachment(w http.ResponseWriter, r *http.Request) {
 	user := userFromContext(r)
@@ -621,6 +646,31 @@ func (s *Server) handleUploadEntryAttachment(w http.ResponseWriter, r *http.Requ
 		s.writeInventoryError(w, r, err, "upload attachment")
 		return
 	}
+	writeJSON(w, http.StatusOK, map[string]any{"entry": entry})
+}
+
+// handleDeleteEntryAttachment removes an attachment from an entry and deletes
+// the underlying file.
+func (s *Server) handleDeleteEntryAttachment(w http.ResponseWriter, r *http.Request) {
+	user := userFromContext(r)
+	id, ok := s.pathID(r)
+	if !ok {
+		writeAPIError(w, http.StatusBadRequest, "invalid entry id")
+		return
+	}
+	var req struct {
+		Path string `json:"path"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Path) == "" {
+		writeAPIError(w, http.StatusBadRequest, "invalid json payload")
+		return
+	}
+	entry, err := s.inventory.RemoveEntryAttachment(r.Context(), user.ID, id, req.Path)
+	if err != nil {
+		s.writeInventoryError(w, r, err, "delete attachment")
+		return
+	}
+	_ = os.Remove(filepath.Join(s.cfg.UploadsDir(), filepath.Base(req.Path)))
 	writeJSON(w, http.StatusOK, map[string]any{"entry": entry})
 }
 

@@ -77,10 +77,18 @@
 	<header class="flex flex-wrap items-end justify-between gap-2">
 		<div>
 			<h1 class="text-2xl font-bold">
-				Welcome back{user ? `, ${user.displayName || user.username}` : ''}
+				Welcome{user ? `, ${user.displayName || user.username}` : ''}
 			</h1>
 			<p class="text-sm text-slate-600 dark:text-slate-400">Here's an overview of your capitals!</p>
 		</div>
+		<a
+			href="/help"
+			class="inline-flex items-center gap-1.5 rounded-md p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+			title="Help"
+			aria-label="Help"
+		>
+			<Icon name="help" class="h-6 w-6" />
+		</a>
 	</header>
 
 	{#if error}

@@ -501,7 +501,7 @@
 				<div class="flex items-center justify-between gap-2">
 					<div class="flex min-w-0 items-center gap-2">
 						<span
-							class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300"
+							class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300"
 						>
 							<Icon name="cube" class="h-5 w-5" />
 						</span>

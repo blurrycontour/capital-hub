@@ -115,7 +115,14 @@
 
 <section class="mx-auto max-w-5xl space-y-6">
 	<header class="flex flex-wrap items-center justify-between gap-3">
-		<h1 class="text-2xl font-bold">Collections</h1>
+		<div class="flex items-center gap-2.5">
+			<span
+				class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300"
+			>
+				<Icon name="collections" class="h-5 w-5" />
+			</span>
+			<h1 class="text-2xl font-bold">Collections</h1>
+		</div>
 		<div class="flex items-center gap-2">
 			<div class="inline-flex rounded-md border border-slate-300 p-0.5 dark:border-slate-700">
 				<button
@@ -360,14 +367,6 @@
 				<CustomFieldsEditor bind:fields={cFields} />
 			</div>
 		</div>
-
-		<label class="flex items-center gap-2 text-sm">
-			<input type="checkbox" bind:checked={cUseLocation} class="rounded" />
-			<span class="text-slate-600 dark:text-slate-400">Add a location</span>
-		</label>
-		{#if cUseLocation}
-			<LocationPicker bind:lat={cLat} bind:lng={cLng} bind:label={cLabel} />
-		{/if}
 	</div>
 	{#snippet footer()}
 		<button

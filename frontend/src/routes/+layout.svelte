@@ -34,7 +34,8 @@
 		{ href: '/collections', label: 'Collections', icon: 'collections' },
 		{ href: '/items', label: 'Items', icon: 'cube' },
 		{ href: '/search', label: 'Search', icon: 'search' },
-		{ href: '/notifications', label: 'Notifications', icon: 'bell' }
+		{ href: '/notifications', label: 'Notifications', icon: 'bell' },
+		{ href: '/help', label: 'Help', icon: 'help' }
 	];
 
 	// The sidebar is expanded unless explicitly collapsed (pure toggle).

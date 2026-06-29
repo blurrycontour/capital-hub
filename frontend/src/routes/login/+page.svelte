@@ -67,7 +67,7 @@
 	</div>
 	<!-- Left: brand + welcome -->
 	<div
-		class="hidden flex-col justify-center gap-6 dark:bg-slate-900 dark:text-slate-300 bg-slate-200 p-12 text-slate-900 md:flex"
+		class="hidden items-center flex-col justify-center gap-6 dark:bg-slate-900 dark:text-slate-300 bg-slate-200 p-12 text-slate-900 md:flex"
 	>
 		<div class="flex items-center gap-3">
 			<img src="/logo-text.svg" alt="Capital Hub" class="h-12 w-auto rounded-lg" />

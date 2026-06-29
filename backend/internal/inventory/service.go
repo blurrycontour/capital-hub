@@ -926,6 +926,40 @@ func (s *Service) RemoveItemImage(ctx context.Context, userID, id int64, imagePa
 	return s.GetItem(ctx, userID, id)
 }
 
+// SetItemCover makes the given image the item's display picture by moving it to
+// the front of the gallery, which the cover (image_path) is always derived
+// from. The image must already belong to the item.
+func (s *Service) SetItemCover(ctx context.Context, userID, id int64, imagePath string) (*Item, error) {
+	if err := s.requireItemWrite(ctx, userID, id); err != nil {
+		return nil, err
+	}
+	item, err := s.GetItem(ctx, userID, id)
+	if err != nil {
+		return nil, err
+	}
+	found := false
+	next := make([]string, 0, len(item.Images))
+	next = append(next, imagePath)
+	for _, p := range item.Images {
+		if p == imagePath {
+			found = true
+			continue
+		}
+		next = append(next, p)
+	}
+	if !found {
+		return nil, ErrNotFound
+	}
+	_, err = s.db.ExecContext(ctx,
+		`UPDATE items SET image_path = ?, images = ?, updated_at = datetime('now'), updated_by = ? WHERE id = ?`,
+		imagePath, marshalJSONField(next), userID, id,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("set item cover: %w", err)
+	}
+	return s.GetItem(ctx, userID, id)
+}
+
 // DeleteItem removes an item and cascades to its entries (requires write).
 func (s *Service) DeleteItem(ctx context.Context, userID, id int64) error {
 	if err := s.requireItemWrite(ctx, userID, id); err != nil {

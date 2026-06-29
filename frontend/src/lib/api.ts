@@ -578,6 +578,11 @@ export async function deleteItemImage(id: number, path: string): Promise<Item> {
 	return body.item;
 }
 
+export async function setItemCover(id: number, path: string): Promise<Item> {
+	const body = await mutate<{ item: Item }>(`/api/v1/items/${id}/cover`, 'POST', { path });
+	return body.item;
+}
+
 export async function uploadItemAttachment(id: number, file: File): Promise<Item> {
 	const csrf = await fetchCSRFToken();
 	const form = new FormData();

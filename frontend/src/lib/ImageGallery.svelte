@@ -3,34 +3,52 @@
 
 	let {
 		images = [],
+		coverPath = '',
 		onadd,
 		ondelete,
+		onsetcover,
 		uploading = false
 	}: {
 		images?: string[];
+		coverPath?: string;
 		onadd?: (file: File) => void;
 		ondelete?: (path: string) => void;
+		onsetcover?: (path: string) => void;
 		uploading?: boolean;
 	} = $props();
 
-	let index = $state(0);
+	// Path of the image currently in view. Tracking by path (not index) keeps
+	// the view on the same image when the list is reordered — e.g. after
+	// choosing a new cover, which moves that image to the front.
+	let activePath = $state('');
 	let fileInput = $state<HTMLInputElement | null>(null);
 
-	// Keep the active slide in range as images are added/removed.
+	// Index is derived from the active path so a reorder never changes which
+	// image is shown. Falls back to the first image when the path is unknown.
+	const index = $derived.by(() => {
+		const i = images.indexOf(activePath);
+		return i >= 0 ? i : 0;
+	});
+
+	// Keep the active path pointing at a real image (initial load, additions,
+	// removals) without disturbing it on a mere reorder.
 	$effect(() => {
-		if (index > images.length - 1) index = Math.max(0, images.length - 1);
+		if (!images.includes(activePath)) {
+			activePath = images[0] ?? '';
+		}
 	});
 
 	const current = $derived(images[index] ?? '');
+	const isCover = $derived(current !== '' && current === coverPath);
 
 	function prev() {
 		if (images.length === 0) return;
-		index = (index - 1 + images.length) % images.length;
+		activePath = images[(index - 1 + images.length) % images.length];
 	}
 
 	function next() {
 		if (images.length === 0) return;
-		index = (index + 1) % images.length;
+		activePath = images[(index + 1) % images.length];
 	}
 
 	function onFileChange(e: Event) {
@@ -70,6 +88,20 @@
 					{index + 1} / {images.length}
 				</span>
 			{/if}
+			{#if onsetcover}
+				<button
+					type="button"
+					class={`absolute left-2 top-2 rounded-full p-1.5 text-white disabled:cursor-default ${
+						isCover ? 'bg-sky-700' : 'bg-slate-900/60 hover:bg-sky-700'
+					}`}
+					aria-label={isCover ? 'Current display picture' : 'Set as display picture'}
+					title={isCover ? 'Current display picture' : 'Set as display picture'}
+					onclick={() => onsetcover?.(current)}
+					disabled={isCover}
+				>
+					<Icon name="star" class="h-4 w-4" filled={isCover} />
+				</button>
+			{/if}
 			{#if ondelete}
 				<button
 					type="button"
@@ -95,7 +127,7 @@
 					class:border-sky-500={i === index}
 					class:border-transparent={i !== index}
 					aria-label={`Show image ${i + 1}`}
-					onclick={() => (index = i)}
+					onclick={() => (activePath = img)}
 				>
 					<img src={img} alt={`Thumbnail ${i + 1}`} class="h-full w-full object-cover" />
 				</button>

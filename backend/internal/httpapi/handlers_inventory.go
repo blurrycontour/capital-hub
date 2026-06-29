@@ -582,6 +582,29 @@ func (s *Server) handleDeleteItemImage(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"item": item})
 }
 
+// handleSetItemCover makes an existing gallery image the item's display picture.
+func (s *Server) handleSetItemCover(w http.ResponseWriter, r *http.Request) {
+	user := userFromContext(r)
+	id, ok := s.pathID(r)
+	if !ok {
+		writeAPIError(w, http.StatusBadRequest, "invalid item id")
+		return
+	}
+	var req struct {
+		Path string `json:"path"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Path) == "" {
+		writeAPIError(w, http.StatusBadRequest, "invalid json payload")
+		return
+	}
+	item, err := s.inventory.SetItemCover(r.Context(), user.ID, id, req.Path)
+	if err != nil {
+		s.writeInventoryError(w, r, err, "set cover image")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"item": item})
+}
+
 // handleUploadItemAttachment stores a file and appends it to an item.
 func (s *Server) handleUploadItemAttachment(w http.ResponseWriter, r *http.Request) {
 	user := userFromContext(r)

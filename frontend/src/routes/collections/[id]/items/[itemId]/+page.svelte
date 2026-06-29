@@ -19,6 +19,7 @@
 		listCollections,
 		uploadItemImage,
 		deleteItemImage,
+		setItemCover,
 		uploadItemAttachment,
 		deleteItemAttachment,
 		uploadEntryAttachment,
@@ -307,12 +308,29 @@
 		}
 	}
 
-	async function onDeleteImage(path: string) {
+	// Path of the image awaiting delete confirmation (null = no prompt).
+	let deleteImageTarget = $state<string | null>(null);
+
+	async function onSetCover(path: string) {
 		if (!item) return;
 		uploading = true;
 		error = '';
 		try {
-			item = await deleteItemImage(item.id, path);
+			item = await setItemCover(item.id, path);
+		} catch (err) {
+			error = err instanceof Error ? err.message : 'Failed to set display picture';
+		} finally {
+			uploading = false;
+		}
+	}
+
+	async function confirmDeleteImage() {
+		if (!item || deleteImageTarget == null) return;
+		uploading = true;
+		error = '';
+		try {
+			item = await deleteItemImage(item.id, deleteImageTarget);
+			deleteImageTarget = null;
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to delete image';
 		} finally {
@@ -336,12 +354,16 @@
 		}
 	}
 
-	async function onDeleteItemAttachment(path: string) {
-		if (!item) return;
+	// Path of the attachment awaiting delete confirmation (null = no prompt).
+	let deleteAttachmentTarget = $state<string | null>(null);
+
+	async function confirmDeleteItemAttachment() {
+		if (!item || deleteAttachmentTarget == null) return;
 		uploadingAttachment = true;
 		error = '';
 		try {
-			item = await deleteItemAttachment(item.id, path);
+			item = await deleteItemAttachment(item.id, deleteAttachmentTarget);
+			deleteAttachmentTarget = null;
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to delete attachment';
 		} finally {
@@ -578,8 +600,10 @@
 			<h2 class="mb-2 text-lg font-semibold">Images</h2>
 			<ImageGallery
 				images={item.images}
+				coverPath={item.imagePath}
 				onadd={canWrite ? onAddImage : undefined}
-				ondelete={canWrite ? onDeleteImage : undefined}
+				ondelete={canWrite ? (path) => (deleteImageTarget = path) : undefined}
+				onsetcover={canWrite ? onSetCover : undefined}
 				{uploading}
 			/>
 		</div>
@@ -624,7 +648,8 @@
 						>
 							<a
 								href={att.path}
-								target="_blank"
+								target="_self"
+								title="Open attachment in same tab"
 								rel="noopener noreferrer"
 								class="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 hover:bg-slate-100 dark:hover:bg-slate-800"
 							>
@@ -636,7 +661,7 @@
 									type="button"
 									class="rounded p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-60 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
 									aria-label="Delete attachment"
-									onclick={() => onDeleteItemAttachment(att.path)}
+									onclick={() => (deleteAttachmentTarget = att.path)}
 									disabled={uploadingAttachment}
 								>
 									<Icon name="close" class="h-4 w-4" />
@@ -675,7 +700,7 @@
 						class="bg-slate-50 text-left text-xs text-slate-500 dark:bg-slate-800/50"
 					>
 						<tr>
-							<th class="px-3 py-2 font-medium">
+							<th class="px-3 py-3 font-medium">
 								<button
 									type="button"
 									class="inline-flex items-center gap-1 hover:text-slate-700 dark:hover:text-slate-300"
@@ -690,7 +715,7 @@
 									{/if}
 								</button>
 							</th>
-							<th class="px-3 py-2 font-medium">
+							<th class="px-3 py-3 font-medium">
 								<button
 									type="button"
 									class="inline-flex items-center gap-1 hover:text-slate-700 dark:hover:text-slate-300"
@@ -705,7 +730,7 @@
 									{/if}
 								</button>
 							</th>
-							<th class="px-3 py-2 font-medium">
+							<th class="px-3 py-3 font-medium">
 								<button
 									type="button"
 									class="ml-auto inline-flex items-center gap-1 hover:text-slate-700 dark:hover:text-slate-300"
@@ -720,12 +745,12 @@
 									{/if}
 								</button>
 							</th>
-							<th class="px-3 py-2 font-medium">Note</th>
-							<th class="px-3 py-2 font-medium">
+							<th class="px-3 py-3 font-medium">Note</th>
+							<th class="px-3 py-3 font-medium">
 								<Icon name="photo" class="mx-auto h-4 w-4" />
 								<span class="sr-only">Attachments</span>
 							</th>
-							<th class="w-8 px-3 py-2"></th>
+							<th class="w-8 px-3 py-3"></th>
 						</tr>
 					</thead>
 					<tbody class="divide-y divide-slate-100 dark:divide-slate-800">
@@ -744,22 +769,22 @@
 									}
 								}}
 							>
-								<td class="px-3 py-2 whitespace-nowrap">{entry.occurredOn}</td>
-								<td class="px-3 py-2 font-medium">{entry.name || '—'}</td>
-								<td class="px-3 py-2 font-medium whitespace-nowrap">
+								<td class="px-3 py-4 whitespace-nowrap">{entry.occurredOn}</td>
+								<td class="px-3 py-4 font-medium">{entry.name || '—'}</td>
+								<td class="px-3 py-4 font-medium whitespace-nowrap">
 									{formatCurrency(entry.amount, entry.currency)}
 								</td>
-								<td class="max-w-[1px] px-3 py-2 text-slate-600 dark:text-slate-400">
+								<td class="max-w-[1px] px-3 py-4 text-slate-600 dark:text-slate-400">
 									<span class="block truncate">{entry.note}</span>
 								</td>
-								<td class="px-3 py-2 text-center text-slate-500">
+								<td class="px-3 py-4 text-center text-slate-500">
 									{#if entry.attachments.length > 0}
 										{entry.attachments.length}
 									{:else}
 										<span class="text-slate-300 dark:text-slate-600">—</span>
 									{/if}
 								</td>
-								<td class="px-3 py-2 text-right text-slate-400">
+								<td class="px-3 py-4 text-right text-slate-400">
 									<Icon
 										name="chevron-down"
 										class={`h-4 w-4 transition-transform ${isOpen ? 'rotate-180' : ''}`}
@@ -784,7 +809,8 @@
 															<li>
 																<a
 																	href={att.path}
-																	target="_blank"
+																	target="_self"
+																	title="Open attachment in same tab"
 																	rel="noopener noreferrer"
 																	class="inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-2 py-1 text-xs hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
 																>
@@ -824,6 +850,8 @@
 			</div>
 		{/if}
 	{/if}
+	<!-- Extra vertical space  -->
+	<div class="h-10"></div>
 </section>
 
 <!-- Edit item modal -->
@@ -954,15 +982,13 @@
 						<li
 							class="inline-flex items-center gap-1 rounded-md border border-slate-200 pr-0.5 text-xs dark:border-slate-800"
 						>
-							<a
-								href={att.path}
-								target="_blank"
-								rel="noopener noreferrer"
+							<p
+								title={att.path}
 								class="inline-flex items-center gap-1.5 rounded-md px-2 py-1 hover:bg-slate-100 dark:hover:bg-slate-800"
 							>
 								<Icon name="photo" class="h-3.5 w-3.5 text-slate-400" />
 								{att.name}
-							</a>
+							</p>
 							<button
 								type="button"
 								class="rounded p-0.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-60 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
@@ -1116,6 +1142,62 @@
 			disabled={deletingEntry}
 		>
 			{deletingEntry ? 'Deleting…' : 'Delete'}
+		</button>
+	{/snippet}
+</Modal>
+
+<!-- Delete image confirmation -->
+<Modal
+	title="Delete image"
+	open={deleteImageTarget !== null}
+	onclose={() => (deleteImageTarget = null)}
+>
+	<p class="text-sm text-slate-600 dark:text-slate-400">
+		Delete this image? This cannot be undone.
+	</p>
+	{#snippet footer()}
+		<button
+			type="button"
+			class="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+			onclick={() => (deleteImageTarget = null)}
+		>
+			Cancel
+		</button>
+		<button
+			type="button"
+			class="rounded-md bg-rose-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-60"
+			onclick={confirmDeleteImage}
+			disabled={uploading}
+		>
+			{uploading ? 'Deleting…' : 'Delete'}
+		</button>
+	{/snippet}
+</Modal>
+
+<!-- Delete attachment confirmation -->
+<Modal
+	title="Delete attachment"
+	open={deleteAttachmentTarget !== null}
+	onclose={() => (deleteAttachmentTarget = null)}
+>
+	<p class="text-sm text-slate-600 dark:text-slate-400">
+		Delete this attachment? This cannot be undone.
+	</p>
+	{#snippet footer()}
+		<button
+			type="button"
+			class="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+			onclick={() => (deleteAttachmentTarget = null)}
+		>
+			Cancel
+		</button>
+		<button
+			type="button"
+			class="rounded-md bg-rose-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-60"
+			onclick={confirmDeleteItemAttachment}
+			disabled={uploadingAttachment}
+		>
+			{uploadingAttachment ? 'Deleting…' : 'Delete'}
 		</button>
 	{/snippet}
 </Modal>

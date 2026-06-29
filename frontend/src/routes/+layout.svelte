@@ -214,10 +214,10 @@
 				>
 					<div class="flex min-w-0 items-center gap-2">
 						{#if expanded}
-							<img src="/new-logo-text.svg" alt="Capital Hub" class="h-7 w-auto rounded" />
+							<img src="/logo-text.svg" alt="Capital Hub" class="h-7 w-auto rounded" />
 						{:else}
 							<span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white">
-								<img src="/new-logo.svg" alt="Capital Hub" class="h-6 w-6" />
+								<img src="/logo.svg" alt="Capital Hub" class="h-6 w-6" />
 							</span>
 						{/if}
 					</div>

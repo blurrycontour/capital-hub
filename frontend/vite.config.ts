@@ -12,7 +12,7 @@ export default defineConfig({
 			// and served by the Go backend as a static file.
 			registerType: 'prompt', // show update prompt instead of silently replacing
 			injectRegister: 'script',
-			includeAssets: ['new-logo.svg'],
+			includeAssets: ['logo.svg'],
 			manifest: {
 				name: 'Capital Hub',
 				short_name: 'Capital Hub',

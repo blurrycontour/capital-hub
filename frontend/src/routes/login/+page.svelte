@@ -70,7 +70,7 @@
 		class="hidden flex-col justify-center gap-6 dark:bg-slate-900 dark:text-slate-300 bg-slate-200 p-12 text-slate-900 md:flex"
 	>
 		<div class="flex items-center gap-3">
-			<img src="/new-logo-text.svg" alt="Capital Hub" class="h-12 w-auto rounded-lg" />
+			<img src="/logo-text.svg" alt="Capital Hub" class="h-12 w-auto rounded-lg" />
 		</div>
 		<div class="space-y-3">
 			<p class="max-w-md">
@@ -83,7 +83,7 @@
 	<div class="flex items-center justify-center p-6">
 		<div class="w-full max-w-md space-y-4">
 			<div class="flex items-center justify-center md:hidden">
-				<img src="/new-logo-text.svg" alt="Capital Hub" class="h-11 w-auto rounded-lg" />
+				<img src="/logo-text.svg" alt="Capital Hub" class="h-11 w-auto rounded-lg" />
 			</div>
 
 			<div class="flex items-center justify-center gap-3">

@@ -203,7 +203,7 @@
 				></button>
 			{/if}
 			<aside
-				class="fixed inset-y-0 left-0 z-40 flex h-screen shrink-0 flex-col border-r border-slate-200 bg-white transition-transform duration-200 md:sticky md:top-0 md:z-auto md:translate-x-0 md:transition-[width] dark:border-slate-800 dark:bg-slate-900"
+				class="fixed inset-y-0 left-0 z-40 flex h-screen shrink-0 flex-col border-r border-slate-200 bg-slate-100 transition-transform duration-200 md:sticky md:top-0 md:z-auto md:translate-x-0 md:transition-[width] dark:border-slate-800 dark:bg-slate-900"
 				class:w-64={expanded}
 				class:w-16={!expanded}
 				class:-translate-x-full={!mobileOpen}
@@ -213,10 +213,13 @@
 					class:justify-center={!expanded}
 				>
 					<div class="flex min-w-0 items-center gap-2">
-						<span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-sky-600 text-white">
-							<Icon name="logo" class="h-5 w-5" />
-						</span>
-						{#if expanded}<span class="truncate font-semibold">Capital Hub</span>{/if}
+						{#if expanded}
+							<img src="/new-logo-text.svg" alt="Capital Hub" class="h-7 w-auto rounded" />
+						{:else}
+							<span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white">
+								<img src="/new-logo.svg" alt="Capital Hub" class="h-6 w-6" />
+							</span>
+						{/if}
 					</div>
 				</div>
 

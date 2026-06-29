@@ -67,19 +67,14 @@
 	</div>
 	<!-- Left: brand + welcome -->
 	<div
-		class="hidden flex-col justify-center gap-6 bg-gradient-to-br from-sky-700 to-slate-900 p-12 text-white md:flex"
+		class="hidden flex-col justify-center gap-6 dark:bg-slate-900 dark:text-slate-300 bg-slate-200 p-12 text-slate-900 md:flex"
 	>
 		<div class="flex items-center gap-3">
-			<span class="flex h-12 w-12 items-center justify-center rounded-xl bg-white/15">
-				<Icon name="logo" class="h-7 w-7" />
-			</span>
-			<span class="text-2xl font-bold">Capital Hub</span>
+			<img src="/new-logo-text.svg" alt="Capital Hub" class="h-12 w-auto rounded-lg" />
 		</div>
 		<div class="space-y-3">
-			<h1 class="text-3xl font-bold leading-tight">Welcome to Capital Hub</h1>
-			<p class="max-w-md text-sky-100/90">
-				Self-hosted asset management. Track collections, organize your portfolio, and stay on top of
-				notifications — all in one place.
+			<p class="max-w-md">
+				Self-hosted asset management. Track collections, organize your portfolio, share with others and get notified — all in one place.
 			</p>
 		</div>
 	</div>
@@ -87,11 +82,8 @@
 	<!-- Right: sign-in form -->
 	<div class="flex items-center justify-center p-6">
 		<div class="w-full max-w-md space-y-4">
-			<div class="flex items-center justify-center gap-3 md:hidden">
-				<span class="flex h-10 w-10 items-center justify-center rounded-lg bg-sky-600 text-white">
-					<Icon name="logo" class="h-6 w-6" />
-				</span>
-				<span class="text-3xl font-bold">Capital Hub</span>
+			<div class="flex items-center justify-center md:hidden">
+				<img src="/new-logo-text.svg" alt="Capital Hub" class="h-11 w-auto rounded-lg" />
 			</div>
 
 			<div class="flex items-center justify-center gap-3">

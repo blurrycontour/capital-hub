@@ -1,6 +1,5 @@
 <script lang="ts" module>
 	export type IconName =
-		| 'logo'
 		| 'dashboard'
 		| 'collections'
 		| 'search'
@@ -42,7 +41,6 @@
 
 	// Heroicons-style outline path data keyed by icon name.
 	const PATHS: Record<IconName, string> = {
-		logo: 'M3 21h18M4.5 21V9.75L12 4.5l7.5 5.25V21M9 21v-6h6v6',
 		dashboard:
 			'M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z',
 		collections:

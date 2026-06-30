@@ -56,7 +56,7 @@
 		try {
 			if (auth.user) {
 				const [notes, portfolio, recent] = await Promise.all([
-					listNotifications(5),
+					listNotifications(4),
 					getPortfolioStats(),
 					getRecentItems(6)
 				]);
@@ -174,7 +174,7 @@
 			</div>
 		</div>
 
-		<div class="space-y-3 rounded-lg border border-slate-200 p-5 dark:border-slate-800">
+		<div class="space-y-3 truncate rounded-lg border border-slate-200 p-5 dark:border-slate-800">
 			<h2 class="text-lg font-semibold">Recent notifications</h2>
 			{#if notifications.length === 0}
 				<p class="text-sm text-slate-500">No recent notifications.</p>

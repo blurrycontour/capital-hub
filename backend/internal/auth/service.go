@@ -258,11 +258,12 @@ func (s *Service) SetStatsIncludeShared(ctx context.Context, userID int64, inclu
 
 // Preferences holds the per-user UI and notification preferences.
 type Preferences struct {
-	IncludeSharedInStats   bool `json:"includeSharedInStats"`
-	AmountDecimals         int  `json:"amountDecimals"`
-	NotifyCollectionShared bool `json:"notifyCollectionShared"`
-	NotifyItemAdded        bool `json:"notifyItemAdded"`
-	NotifyEntryAdded       bool `json:"notifyEntryAdded"`
+	IncludeSharedInStats   bool   `json:"includeSharedInStats"`
+	AmountDecimals         int    `json:"amountDecimals"`
+	NumberFormat           string `json:"numberFormat"`
+	NotifyCollectionShared bool   `json:"notifyCollectionShared"`
+	NotifyItemAdded        bool   `json:"notifyItemAdded"`
+	NotifyEntryAdded       bool   `json:"notifyEntryAdded"`
 }
 
 func clampDecimals(n int) int {
@@ -273,6 +274,17 @@ func clampDecimals(n int) int {
 		return 2
 	}
 	return n
+}
+
+// normalizeNumberFormat ensures the stored money formatting style is one of the
+// supported values, defaulting to international grouping.
+func normalizeNumberFormat(s string) string {
+	switch s {
+	case "indian", "european":
+		return s
+	default:
+		return "international"
+	}
 }
 
 func boolToInt(b bool) int {
@@ -287,9 +299,9 @@ func (s *Service) GetPreferences(ctx context.Context, userID int64) (Preferences
 	var p Preferences
 	var includeShared, notifShared, notifItem, notifEntry int
 	if err := s.db.QueryRowContext(ctx,
-		`SELECT include_shared_in_stats, amount_decimals, notify_collection_shared, notify_item_added, notify_entry_added
+		`SELECT include_shared_in_stats, amount_decimals, number_format, notify_collection_shared, notify_item_added, notify_entry_added
 		 FROM users WHERE id = ? LIMIT 1`, userID,
-	).Scan(&includeShared, &p.AmountDecimals, &notifShared, &notifItem, &notifEntry); err != nil {
+	).Scan(&includeShared, &p.AmountDecimals, &p.NumberFormat, &notifShared, &notifItem, &notifEntry); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Preferences{}, errors.New("user not found")
 		}
@@ -300,15 +312,16 @@ func (s *Service) GetPreferences(ctx context.Context, userID int64) (Preferences
 	p.NotifyItemAdded = notifItem == 1
 	p.NotifyEntryAdded = notifEntry == 1
 	p.AmountDecimals = clampDecimals(p.AmountDecimals)
+	p.NumberFormat = normalizeNumberFormat(p.NumberFormat)
 	return p, nil
 }
 
 // SetPreferences persists every preference for a user.
 func (s *Service) SetPreferences(ctx context.Context, userID int64, p Preferences) error {
 	if _, err := s.db.ExecContext(ctx,
-		`UPDATE users SET include_shared_in_stats = ?, amount_decimals = ?, notify_collection_shared = ?,
+		`UPDATE users SET include_shared_in_stats = ?, amount_decimals = ?, number_format = ?, notify_collection_shared = ?,
 		 notify_item_added = ?, notify_entry_added = ?, updated_at = datetime('now') WHERE id = ?`,
-		boolToInt(p.IncludeSharedInStats), clampDecimals(p.AmountDecimals), boolToInt(p.NotifyCollectionShared),
+		boolToInt(p.IncludeSharedInStats), clampDecimals(p.AmountDecimals), normalizeNumberFormat(p.NumberFormat), boolToInt(p.NotifyCollectionShared),
 		boolToInt(p.NotifyItemAdded), boolToInt(p.NotifyEntryAdded), userID,
 	); err != nil {
 		return fmt.Errorf("set preferences: %w", err)

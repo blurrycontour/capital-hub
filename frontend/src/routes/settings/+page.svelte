@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { auth } from '$lib/auth.svelte';
-	import { changePassword, updateProfile, uploadAvatar, getPreferences, updatePreferences, setAmountDecimals, getVersion, requestAccountDeletion, confirmAccountDeletion, type UserPreferences } from '$lib/api';
+	import { changePassword, updateProfile, uploadAvatar, getPreferences, updatePreferences, setAmountDecimals, setNumberFormat, getVersion, requestAccountDeletion, confirmAccountDeletion, type UserPreferences, type NumberFormat } from '$lib/api';
 	import Icon from '$lib/Icon.svelte';
 	import Modal from '$lib/Modal.svelte';
 	import { goto } from '$app/navigation';
@@ -35,6 +35,7 @@
 
 	// Display & notification preferences.
 	let amountDecimals = $state(0);
+	let numberFormat = $state<NumberFormat>('international');
 	let notifyCollectionShared = $state(true);
 	let notifyItemAdded = $state(true);
 	let notifyEntryAdded = $state(true);
@@ -47,6 +48,7 @@
 			const prefs = await getPreferences();
 			includeSharedInStats = prefs.includeSharedInStats;
 			amountDecimals = prefs.amountDecimals;
+			numberFormat = prefs.numberFormat;
 			notifyCollectionShared = prefs.notifyCollectionShared;
 			notifyItemAdded = prefs.notifyItemAdded;
 			notifyEntryAdded = prefs.notifyEntryAdded;
@@ -65,6 +67,7 @@
 		return {
 			includeSharedInStats,
 			amountDecimals,
+			numberFormat,
 			notifyCollectionShared,
 			notifyItemAdded,
 			notifyEntryAdded
@@ -80,10 +83,12 @@
 			const prefs = await updatePreferences(next);
 			includeSharedInStats = prefs.includeSharedInStats;
 			amountDecimals = prefs.amountDecimals;
+			numberFormat = prefs.numberFormat;
 			notifyCollectionShared = prefs.notifyCollectionShared;
 			notifyItemAdded = prefs.notifyItemAdded;
 			notifyEntryAdded = prefs.notifyEntryAdded;
 			setAmountDecimals(prefs.amountDecimals);
+			setNumberFormat(prefs.numberFormat);
 		} catch (err) {
 			prefsError = err instanceof Error ? err.message : 'Failed to update preference';
 		} finally {
@@ -97,6 +102,10 @@
 
 	async function setDecimals(n: number) {
 		await savePreferences({ ...currentPrefs(), amountDecimals: n });
+	}
+
+	async function setMoneyFormat(f: NumberFormat) {
+		await savePreferences({ ...currentPrefs(), numberFormat: f });
 	}
 
 	async function toggleNotify(
@@ -572,6 +581,27 @@
 					<option value={0}>0 (whole numbers)</option>
 					<option value={1}>1 decimal place</option>
 					<option value={2}>2 decimal places</option>
+				</select>
+			</div>
+
+			<div class="flex items-start justify-between gap-4 border-t border-slate-100 pt-4 dark:border-slate-800">
+				<div class="space-y-0.5">
+					<p class="text-sm font-medium">Number format</p>
+					<p class="text-sm text-slate-500">
+						Digit grouping and decimal separator used when displaying amounts.
+					</p>
+				</div>
+				<select
+					aria-label="Money number format"
+					disabled={savingPrefs}
+					value={numberFormat}
+					onchange={(e) =>
+						setMoneyFormat((e.currentTarget as HTMLSelectElement).value as NumberFormat)}
+					class="mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800"
+				>
+					<option value="international">International (1,234,567.89)</option>
+					<option value="indian">Indian (12,34,567.89)</option>
+					<option value="european">European (1.234.567,89)</option>
 				</select>
 			</div>
 		</section>

@@ -10,7 +10,7 @@
 	import { notifCount } from '$lib/notifCount.svelte';
 	import Icon, { type IconName } from '$lib/Icon.svelte';
 	import { useRegisterSW } from 'virtual:pwa-register/svelte';
-	import { getPreferences, setAmountDecimals } from '$lib/api';
+	import { getPreferences, setAmountDecimals, setNumberFormat } from '$lib/api';
 
 	let { children } = $props();
 	let theme = $state<Theme>('light');
@@ -114,6 +114,7 @@
 		try {
 			const prefs = await getPreferences();
 			setAmountDecimals(prefs.amountDecimals);
+			setNumberFormat(prefs.numberFormat);
 		} catch {
 			// Non-fatal: fall back to the default precision.
 		}

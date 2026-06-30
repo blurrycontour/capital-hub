@@ -85,9 +85,12 @@ export async function uploadAvatar(file: File): Promise<ApiUser> {
 	return body.user;
 }
 
+export type NumberFormat = 'international' | 'indian' | 'european';
+
 export type UserPreferences = {
 	includeSharedInStats: boolean;
 	amountDecimals: number;
+	numberFormat: NumberFormat;
 	notifyCollectionShared: boolean;
 	notifyItemAdded: boolean;
 	notifyEntryAdded: boolean;
@@ -716,17 +719,36 @@ export function getAmountDecimals(): number {
 	return amountDecimals;
 }
 
+// Money number formatting style. Controls digit grouping and the decimal
+// separator. Configurable via user preferences (default 'international').
+let numberFormat: NumberFormat = 'international';
+
+const NUMBER_FORMAT_LOCALES: Record<NumberFormat, string> = {
+	international: 'en-US', // 1,234,567.89
+	indian: 'en-IN', // 12,34,567.89
+	european: 'de-DE' // 1.234.567,89
+};
+
+export function setNumberFormat(f: string): void {
+	numberFormat = f === 'indian' || f === 'european' ? f : 'international';
+}
+
+export function getNumberFormat(): NumberFormat {
+	return numberFormat;
+}
+
 // Format a currency total for display.
 export function formatCurrency(amount: number, currency: string): string {
+	const locale = NUMBER_FORMAT_LOCALES[numberFormat];
 	try {
-		return new Intl.NumberFormat(undefined, {
+		return new Intl.NumberFormat(locale, {
 			style: 'currency',
 			currency,
 			minimumFractionDigits: amountDecimals,
 			maximumFractionDigits: amountDecimals
 		}).format(amount);
 	} catch {
-		return `${amount.toLocaleString(undefined, {
+		return `${amount.toLocaleString(locale, {
 			minimumFractionDigits: amountDecimals,
 			maximumFractionDigits: amountDecimals
 		})} ${currency}`;

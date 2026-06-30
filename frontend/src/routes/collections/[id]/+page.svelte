@@ -396,7 +396,7 @@
 										: 'text-rose-600 dark:text-rose-400'
 								}`}
 							>
-								{formatCurrency(t.net, t.currency)}
+								{formatCurrency(Math.abs(t.net), t.currency)}
 							</div>
 							<div class="mt-2 space-y-0.5 text-xs">
 								<div class="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">

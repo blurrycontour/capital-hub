@@ -26,7 +26,7 @@
 		return totals.map((t) => formatCurrency(pick(t), t.currency)).join(' · ');
 	}
 
-	const netLabel = $derived(moneyLabel((t) => t.net));
+	const netLabel = $derived(moneyLabel((t) => Math.abs(t.net)));
 	const creditLabel = $derived(moneyLabel((t) => t.credit));
 	const debitLabel = $derived(moneyLabel((t) => t.debit));
 

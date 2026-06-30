@@ -366,6 +366,7 @@ export type Entry = {
 	itemId: number;
 	name: string;
 	amount: number;
+	kind: 'debit' | 'credit';
 	currency: string;
 	note: string;
 	occurredOn: string;
@@ -378,7 +379,9 @@ export type Entry = {
 
 export type CurrencyTotal = {
 	currency: string;
-	total: number;
+	debit: number;
+	credit: number;
+	net: number;
 	entries: number;
 };
 
@@ -418,6 +421,7 @@ export type ItemInput = {
 export type EntryInput = {
 	name: string;
 	amount: number;
+	kind: 'debit' | 'credit';
 	note: string;
 	occurredOn: string;
 	attachments: Attachment[];

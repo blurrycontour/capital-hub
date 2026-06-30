@@ -11,3 +11,14 @@ html,
 body {
 	height: 100%;
 }
+
+/* Hide scrollbars on mobile devices while keeping scroll functionality. */
+@media (max-width: 767px) {
+	* {
+		scrollbar-width: none; /* Firefox */
+		-ms-overflow-style: none; /* IE/legacy Edge */
+	}
+	*::-webkit-scrollbar {
+		display: none; /* Chrome, Safari, WebKit */
+	}
+}

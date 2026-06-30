@@ -388,8 +388,26 @@
 				<div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
 					{#each stats.totals as t (t.currency)}
 						<div class="rounded-md border border-slate-200 p-3 dark:border-slate-800">
-							<div class="text-xs text-slate-500">{t.currency} total</div>
-							<div class="text-lg font-semibold">{formatCurrency(t.total, t.currency)}</div>
+							<div class="text-xs text-slate-500">Net {t.currency}</div>
+							<div
+								class={`text-lg font-semibold ${
+									t.net >= 0
+										? 'text-emerald-600 dark:text-emerald-400'
+										: 'text-rose-600 dark:text-rose-400'
+								}`}
+							>
+								{formatCurrency(t.net, t.currency)}
+							</div>
+							<div class="mt-2 space-y-0.5 text-xs">
+								<div class="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+									<Icon name="plus" class="h-3.5 w-3.5 shrink-0" />
+									{formatCurrency(t.credit, t.currency)}
+								</div>
+								<div class="flex items-center gap-1 text-rose-600 dark:text-rose-400">
+									<Icon name="minus" class="h-3.5 w-3.5 shrink-0" />
+									{formatCurrency(t.debit, t.currency)}
+								</div>
+							</div>
 						</div>
 					{/each}
 					<div class="rounded-md border border-slate-200 p-3 dark:border-slate-800">

@@ -19,23 +19,30 @@
 
 	// Portfolio summary loaded from the backend.
 	const summary = $state({ collections: 0, items: 0, entries: 0 });
-	let totals = $state<{ currency: string; total: number }[]>([]);
+	let totals = $state<{ currency: string; debit: number; credit: number; net: number }[]>([]);
 
-	const valueLabel = $derived(
-		totals.length === 0
-			? formatCurrency(0, 'EUR')
-			: totals.map((t) => formatCurrency(t.total, t.currency)).join(' · ')
-	);
+	function moneyLabel(pick: (t: { debit: number; credit: number; net: number }) => number): string {
+		if (totals.length === 0) return formatCurrency(0, 'EUR');
+		return totals.map((t) => formatCurrency(pick(t), t.currency)).join(' · ');
+	}
 
-	const cards: { label: string; icon: IconName; value: string }[] = $derived([
-		{
-			label: 'Total Value',
-			icon: 'currency',
-			value: valueLabel
-		},
-		{ label: 'Total Collections', icon: 'collections', value: String(summary.collections) },
-		{ label: 'Total Items', icon: 'cube', value: String(summary.items) }
-	]);
+	const netLabel = $derived(moneyLabel((t) => t.net));
+	const creditLabel = $derived(moneyLabel((t) => t.credit));
+	const debitLabel = $derived(moneyLabel((t) => t.debit));
+
+	const cards: { label: string; icon: IconName; value: string; tone: 'neutral' | 'credit' | 'debit' }[] =
+		$derived([
+			{ label: 'Total Debit', icon: 'currency', value: debitLabel, tone: 'debit' },
+			{ label: 'Total Credit', icon: 'currency', value: creditLabel, tone: 'credit' },
+			{ label: 'Net Expense', icon: 'currency', value: netLabel, tone: 'neutral' },
+			{
+				label: 'Total Collections',
+				icon: 'collections',
+				value: String(summary.collections),
+				tone: 'neutral'
+			},
+			{ label: 'Total Items', icon: 'cube', value: String(summary.items), tone: 'neutral' }
+		]);
 
 	// Compact "x ago" label for the recent-items list.
 	function timeAgo(iso: string): string {
@@ -105,11 +112,27 @@
 			<div class="rounded-lg border border-slate-200 p-5 dark:border-slate-800">
 				<div class="flex items-center justify-between">
 					<span class="text-sm text-slate-500">{card.label}</span>
-					<span class="text-sky-600 dark:text-sky-400">
+					<span
+						class={card.tone === 'credit'
+							? 'text-emerald-600 dark:text-emerald-400'
+							: card.tone === 'debit'
+								? 'text-rose-600 dark:text-rose-400'
+								: 'text-sky-600 dark:text-sky-400'}
+					>
 						<Icon name={card.icon} class="h-5 w-5" />
 					</span>
 				</div>
-				<div class="mt-2 text-2xl font-bold">{card.value}</div>
+				<div
+					class={`mt-2 text-2xl font-bold ${
+						card.tone === 'credit'
+							? 'text-emerald-600 dark:text-emerald-400'
+							: card.tone === 'debit'
+								? 'text-rose-600 dark:text-rose-400'
+								: ''
+					}`}
+				>
+					{card.value}
+				</div>
 			</div>
 		{/each}
 	</div>

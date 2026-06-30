@@ -735,6 +735,7 @@ func randomFileName(ext string) (string, error) {
 type entryPayload struct {
 	Name        string                 `json:"name"`
 	Amount      float64                `json:"amount"`
+	Kind        string                 `json:"kind"`
 	Note        string                 `json:"note"`
 	OccurredOn  string                 `json:"occurredOn"`
 	Attachments []inventory.Attachment `json:"attachments"`
@@ -744,6 +745,7 @@ func (p entryPayload) toInput() inventory.EntryInput {
 	return inventory.EntryInput{
 		Name:        p.Name,
 		Amount:      p.Amount,
+		Kind:        p.Kind,
 		Note:        p.Note,
 		OccurredOn:  p.OccurredOn,
 		Attachments: p.Attachments,

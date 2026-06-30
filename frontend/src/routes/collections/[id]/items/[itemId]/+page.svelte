@@ -89,6 +89,7 @@
 	let editingEntry = $state<Entry | null>(null);
 	let enName = $state('');
 	let enAmount = $state(0);
+	let enKind = $state<'debit' | 'credit'>('debit');
 	let enNote = $state('');
 	let enDate = $state('');
 	let savingEntry = $state(false);
@@ -379,6 +380,7 @@
 		editingEntry = null;
 		enName = '';
 		enAmount = 0;
+		enKind = 'debit';
 		enNote = '';
 		enDate = todayISO();
 		entryModal = true;
@@ -388,6 +390,7 @@
 		editingEntry = entry;
 		enName = entry.name;
 		enAmount = entry.amount;
+		enKind = entry.kind;
 		enNote = entry.note;
 		enDate = entry.occurredOn ? entry.occurredOn.slice(0, 10) : todayISO();
 		entryModal = true;
@@ -400,6 +403,7 @@
 		const payload: EntryInput = {
 			name: enName.trim(),
 			amount: Number(enAmount),
+			kind: enKind,
 			note: enNote.trim(),
 			occurredOn: enDate,
 			attachments: editingEntry?.attachments ?? []
@@ -433,6 +437,7 @@
 				editingEntry = await createEntry(item.id, {
 					name: enName.trim(),
 					amount: Number(enAmount),
+					kind: enKind,
 					note: enNote.trim(),
 					occurredOn: enDate,
 					attachments: []
@@ -567,8 +572,26 @@
 					<div class="grid gap-3 sm:grid-cols-3">
 						{#each stats.totals as t (t.currency)}
 							<div class="rounded-md border border-slate-200 p-3 dark:border-slate-800">
-								<div class="text-xs text-slate-500">{t.currency} total</div>
-								<div class="text-lg font-semibold">{formatCurrency(t.total, t.currency)}</div>
+								<div class="text-xs text-slate-500">Net {t.currency}</div>
+								<div
+									class={`text-lg font-semibold ${
+										t.net >= 0
+											? 'text-emerald-600 dark:text-emerald-400'
+											: 'text-rose-600 dark:text-rose-400'
+									}`}
+								>
+									{formatCurrency(t.net, t.currency)}
+								</div>
+								<div class="mt-2 space-y-0.5 text-xs">
+									<div class="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+										<Icon name="plus" class="h-3.5 w-3.5 shrink-0" />
+										{formatCurrency(t.credit, t.currency)}
+									</div>
+									<div class="flex items-center gap-1 text-rose-600 dark:text-rose-400">
+										<Icon name="minus" class="h-3.5 w-3.5 shrink-0" />
+										{formatCurrency(t.debit, t.currency)}
+									</div>
+								</div>
 							</div>
 						{/each}
 						<div class="rounded-md border border-slate-200 p-3 dark:border-slate-800">
@@ -772,7 +795,15 @@
 								<td class="px-3 py-4 whitespace-nowrap">{entry.occurredOn}</td>
 								<td class="px-3 py-4 font-medium">{entry.name || '—'}</td>
 								<td class="px-3 py-4 font-medium whitespace-nowrap">
-									{formatCurrency(entry.amount, entry.currency)}
+									<span
+										class={`inline-flex items-center gap-1.5 ${
+											entry.kind === 'credit'
+												? 'text-emerald-600 dark:text-emerald-400'
+												: 'text-rose-600 dark:text-rose-400'
+										}`}
+									>
+										{formatCurrency(entry.amount, entry.currency)}
+									</span>
 								</td>
 								<td class="max-w-[1px] px-3 py-4 text-slate-600 dark:text-slate-400">
 									<span class="block truncate">{entry.note}</span>
@@ -932,6 +963,33 @@
 				/>
 			</label>
 		</div>
+		<fieldset class="block text-sm">
+			<span class="text-slate-600 dark:text-slate-400">Type</span>
+			<div class="mt-1 flex gap-2">
+				<label
+					class={`flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
+						enKind === 'debit'
+							? 'border-rose-500 bg-rose-50 text-rose-700 dark:border-rose-500 dark:bg-rose-500/10 dark:text-rose-300'
+							: 'border-slate-300 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'
+					}`}
+				>
+					<input type="radio" name="entry-kind" value="debit" bind:group={enKind} class="sr-only" />
+					<Icon name="minus" class="h-4 w-4" />
+					Debit
+				</label>
+				<label
+					class={`flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
+						enKind === 'credit'
+							? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:border-emerald-500 dark:bg-emerald-500/10 dark:text-emerald-300'
+							: 'border-slate-300 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'
+					}`}
+				>
+					<input type="radio" name="entry-kind" value="credit" bind:group={enKind} class="sr-only" />
+					<Icon name="plus" class="h-4 w-4" />
+					Credit
+				</label>
+			</div>
+		</fieldset>
 		<label class="block text-sm">
 			<span class="text-slate-600 dark:text-slate-400">Amount ({currency})</span>
 			<input

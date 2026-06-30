@@ -177,6 +177,7 @@ type Entry struct {
 	ItemID      int64        `json:"itemId"`
 	Name        string       `json:"name"`
 	Amount      float64      `json:"amount"`
+	Kind        string       `json:"kind"`
 	Currency    string       `json:"currency"`
 	Note        string       `json:"note"`
 	OccurredOn  string       `json:"occurredOn"`
@@ -190,7 +191,9 @@ type Entry struct {
 // CurrencyTotal is the aggregated value for a single currency.
 type CurrencyTotal struct {
 	Currency string  `json:"currency"`
-	Total    float64 `json:"total"`
+	Debit    float64 `json:"debit"`
+	Credit   float64 `json:"credit"`
+	Net      float64 `json:"net"`
 	Entries  int     `json:"entries"`
 }
 
@@ -978,7 +981,7 @@ func (s *Service) DeleteItem(ctx context.Context, userID, id int64) error {
 // ---------- Entries ----------
 
 const entrySelect = `
-SELECT e.id, e.item_id, e.name, e.amount, e.currency, e.note, e.occurred_on, e.attachments,
+SELECT e.id, e.item_id, e.name, e.amount, e.kind, e.currency, e.note, e.occurred_on, e.attachments,
        e.created_at, e.updated_at,
        COALESCE(cu.display_name, cu.username, ''),
        COALESCE(uu.display_name, uu.username, '')
@@ -992,7 +995,7 @@ LEFT JOIN users uu ON uu.id = e.updated_by
 func scanEntry(s interface{ Scan(...any) error }) (Entry, error) {
 	var e Entry
 	var attachments string
-	if err := s.Scan(&e.ID, &e.ItemID, &e.Name, &e.Amount, &e.Currency, &e.Note, &e.OccurredOn, &attachments,
+	if err := s.Scan(&e.ID, &e.ItemID, &e.Name, &e.Amount, &e.Kind, &e.Currency, &e.Note, &e.OccurredOn, &attachments,
 		&e.CreatedAt, &e.UpdatedAt, &e.CreatedBy, &e.UpdatedBy); err != nil {
 		return Entry{}, err
 	}
@@ -1051,6 +1054,7 @@ func (s *Service) ListEntries(ctx context.Context, userID, itemID int64) ([]Entr
 type EntryInput struct {
 	Name        string
 	Amount      float64
+	Kind        string
 	Note        string
 	OccurredOn  string
 	Attachments []Attachment
@@ -1058,6 +1062,10 @@ type EntryInput struct {
 
 func normalizeEntry(in *EntryInput) error {
 	in.Name = strings.TrimSpace(in.Name)
+	in.Kind = strings.ToLower(strings.TrimSpace(in.Kind))
+	if in.Kind != "credit" {
+		in.Kind = "debit"
+	}
 	in.OccurredOn = strings.TrimSpace(in.OccurredOn)
 	if in.OccurredOn == "" {
 		in.OccurredOn = time.Now().UTC().Format("2006-01-02")
@@ -1106,9 +1114,9 @@ func (s *Service) CreateEntry(ctx context.Context, userID, itemID int64, in Entr
 		return nil, err
 	}
 	res, err := s.db.ExecContext(ctx,
-		`INSERT INTO entries (item_id, name, amount, currency, note, occurred_on, attachments, created_by, updated_by)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		itemID, in.Name, in.Amount, currency, in.Note, in.OccurredOn, marshalJSONField(in.Attachments), userID, userID,
+		`INSERT INTO entries (item_id, name, amount, kind, currency, note, occurred_on, attachments, created_by, updated_by)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		itemID, in.Name, in.Amount, in.Kind, currency, in.Note, in.OccurredOn, marshalJSONField(in.Attachments), userID, userID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create entry: %w", err)
@@ -1135,9 +1143,9 @@ func (s *Service) UpdateEntry(ctx context.Context, userID, id int64, in EntryInp
 		return nil, err
 	}
 	_, err = s.db.ExecContext(ctx,
-		`UPDATE entries SET name = ?, amount = ?, currency = ?, note = ?, occurred_on = ?, attachments = ?,
+		`UPDATE entries SET name = ?, amount = ?, kind = ?, currency = ?, note = ?, occurred_on = ?, attachments = ?,
 		 updated_at = datetime('now'), updated_by = ? WHERE id = ?`,
-		in.Name, in.Amount, currency, in.Note, in.OccurredOn, marshalJSONField(in.Attachments), userID, id,
+		in.Name, in.Amount, in.Kind, currency, in.Note, in.OccurredOn, marshalJSONField(in.Attachments), userID, id,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("update entry: %w", err)
@@ -1218,7 +1226,10 @@ func (s *Service) CollectionStats(ctx context.Context, userID, collectionID int6
 		return nil, err
 	}
 	return s.aggregate(ctx,
-		`SELECT e.currency, SUM(e.amount), COUNT(*)
+		`SELECT e.currency,
+		        SUM(CASE WHEN e.kind = 'credit' THEN e.amount ELSE 0 END),
+		        SUM(CASE WHEN e.kind = 'debit' THEN e.amount ELSE 0 END),
+		        COUNT(*)
 		 FROM entries e JOIN items i ON i.id = e.item_id
 		 WHERE i.collection_id = ?
 		 GROUP BY e.currency ORDER BY e.currency`,
@@ -1234,7 +1245,11 @@ func (s *Service) ItemStats(ctx context.Context, userID, itemID int64) (*Stats, 
 		return nil, err
 	}
 	stats, err := s.aggregate(ctx,
-		`SELECT currency, SUM(amount), COUNT(*) FROM entries WHERE item_id = ? GROUP BY currency ORDER BY currency`,
+		`SELECT currency,
+		        SUM(CASE WHEN kind = 'credit' THEN amount ELSE 0 END),
+		        SUM(CASE WHEN kind = 'debit' THEN amount ELSE 0 END),
+		        COUNT(*)
+		 FROM entries WHERE item_id = ? GROUP BY currency ORDER BY currency`,
 		itemID,
 		``,
 		`SELECT COUNT(*) FROM entries WHERE item_id = ?`,
@@ -1257,9 +1272,10 @@ func (s *Service) aggregate(ctx context.Context, totalsSQL string, scopeID int64
 	defer rows.Close()
 	for rows.Next() {
 		var ct CurrencyTotal
-		if err := rows.Scan(&ct.Currency, &ct.Total, &ct.Entries); err != nil {
+		if err := rows.Scan(&ct.Currency, &ct.Credit, &ct.Debit, &ct.Entries); err != nil {
 			return nil, fmt.Errorf("scan total: %w", err)
 		}
+		ct.Net = ct.Credit - ct.Debit
 		stats.Totals = append(stats.Totals, ct)
 	}
 	if err := rows.Err(); err != nil {
@@ -1300,7 +1316,10 @@ func (s *Service) PortfolioStats(ctx context.Context, userID int64, includeShare
 	}
 
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT e.currency, SUM(e.amount), COUNT(*)
+		`SELECT e.currency,
+		        SUM(CASE WHEN e.kind = 'credit' THEN e.amount ELSE 0 END),
+		        SUM(CASE WHEN e.kind = 'debit' THEN e.amount ELSE 0 END),
+		        COUNT(*)
 		 FROM entries e
 		 JOIN items i ON i.id = e.item_id
 		 JOIN collections c ON c.id = i.collection_id
@@ -1314,9 +1333,10 @@ func (s *Service) PortfolioStats(ctx context.Context, userID int64, includeShare
 	defer rows.Close()
 	for rows.Next() {
 		var ct CurrencyTotal
-		if err := rows.Scan(&ct.Currency, &ct.Total, &ct.Entries); err != nil {
+		if err := rows.Scan(&ct.Currency, &ct.Credit, &ct.Debit, &ct.Entries); err != nil {
 			return nil, fmt.Errorf("scan portfolio total: %w", err)
 		}
+		ct.Net = ct.Credit - ct.Debit
 		summary.Totals = append(summary.Totals, ct)
 	}
 	if err := rows.Err(); err != nil {

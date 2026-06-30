@@ -565,16 +565,16 @@
 				<!-- Stats -->
 				{#if stats}
 					<div class="grid gap-3 sm:grid-cols-3">
-						<div class="rounded-md border border-slate-200 p-3 dark:border-slate-800">
-							<div class="text-xs text-slate-500">Entries</div>
-							<div class="text-lg font-semibold">{stats.entryCount}</div>
-						</div>
 						{#each stats.totals as t (t.currency)}
 							<div class="rounded-md border border-slate-200 p-3 dark:border-slate-800">
 								<div class="text-xs text-slate-500">{t.currency} total</div>
 								<div class="text-lg font-semibold">{formatCurrency(t.total, t.currency)}</div>
 							</div>
 						{/each}
+						<div class="rounded-md border border-slate-200 p-3 dark:border-slate-800">
+							<div class="text-xs text-slate-500">Entries</div>
+							<div class="text-lg font-semibold">{stats.entryCount}</div>
+						</div>
 					</div>
 				{/if}
 			</div>

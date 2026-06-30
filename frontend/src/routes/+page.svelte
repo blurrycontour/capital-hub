@@ -28,13 +28,13 @@
 	);
 
 	const cards: { label: string; icon: IconName; value: string }[] = $derived([
-		{ label: 'Total Collections', icon: 'collections', value: String(summary.collections) },
-		{ label: 'Total Items', icon: 'cube', value: String(summary.items) },
 		{
 			label: 'Total Value',
 			icon: 'currency',
 			value: valueLabel
-		}
+		},
+		{ label: 'Total Collections', icon: 'collections', value: String(summary.collections) },
+		{ label: 'Total Items', icon: 'cube', value: String(summary.items) }
 	]);
 
 	// Compact "x ago" label for the recent-items list.

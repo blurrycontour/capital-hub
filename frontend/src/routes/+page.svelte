@@ -23,7 +23,7 @@
 
 	const valueLabel = $derived(
 		totals.length === 0
-			? formatCurrency(0, 'USD')
+			? formatCurrency(0, 'EUR')
 			: totals.map((t) => formatCurrency(t.total, t.currency)).join(' · ')
 	);
 

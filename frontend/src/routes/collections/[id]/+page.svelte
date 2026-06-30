@@ -47,7 +47,7 @@
 	let editModal = $state(false);
 	let eName = $state('');
 	let eDescription = $state('');
-	let eCurrency = $state('USD');
+	let eCurrency = $state('EUR');
 	let eLat = $state<number | null>(null);
 	let eLng = $state<number | null>(null);
 	let eLabel = $state('');

@@ -48,7 +48,7 @@
 	let loading = $state(true);
 	let error = $state('');
 
-	const currency = $derived(collection?.currency ?? 'USD');
+	const currency = $derived(collection?.currency ?? 'EUR');
 
 	// Write access derived from the parent collection's access level.
 	const canWrite = $derived(

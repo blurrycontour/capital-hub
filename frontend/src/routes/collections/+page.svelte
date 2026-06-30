@@ -46,7 +46,7 @@
 	let createModal = $state(false);
 	let cName = $state('');
 	let cDescription = $state('');
-	let cCurrency = $state('USD');
+	let cCurrency = $state('EUR');
 	let cLat = $state<number | null>(null);
 	let cLng = $state<number | null>(null);
 	let cLabel = $state('');
@@ -79,7 +79,7 @@
 	function openCreate() {
 		cName = '';
 		cDescription = '';
-		cCurrency = 'USD';
+		cCurrency = 'EUR';
 		cLat = null;
 		cLng = null;
 		cLabel = '';

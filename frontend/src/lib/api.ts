@@ -683,11 +683,11 @@ export async function confirmAccountDeletion(code: string): Promise<void> {
 
 // Common currency codes offered in the UI.
 export const CURRENCIES = [
-	'USD',
 	'EUR',
-	'GBP',
 	'INR',
 	'SEK',
+	'USD',
+	'GBP',
 	'NOK',
 	'DKK',
 	'JPY',

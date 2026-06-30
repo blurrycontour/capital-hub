@@ -372,7 +372,7 @@ func normalizeCollection(in *CollectionInput) error {
 	in.Description = strings.TrimSpace(in.Description)
 	in.Currency = strings.ToUpper(strings.TrimSpace(in.Currency))
 	if in.Currency == "" {
-		in.Currency = "USD"
+		in.Currency = "EUR"
 	}
 	if len(in.Currency) > 8 {
 		return errors.New("currency code is too long")
@@ -1016,7 +1016,7 @@ func (s *Service) collectionCurrencyForItem(ctx context.Context, userID, itemID 
 		return "", fmt.Errorf("resolve collection currency: %w", err)
 	}
 	if strings.TrimSpace(currency) == "" {
-		currency = "USD"
+		currency = "EUR"
 	}
 	return currency, nil
 }

@@ -33,7 +33,7 @@ CREATE TABLE entries (
     item_id     INTEGER NOT NULL REFERENCES items (id) ON DELETE CASCADE,
     kind        TEXT    NOT NULL DEFAULT 'valuation',
     amount      REAL    NOT NULL DEFAULT 0,
-    currency    TEXT    NOT NULL DEFAULT 'USD',
+    currency    TEXT    NOT NULL DEFAULT 'EUR',
     quantity    REAL    NOT NULL DEFAULT 1,
     note        TEXT    NOT NULL DEFAULT '',
     occurred_on TEXT    NOT NULL DEFAULT (date('now')),

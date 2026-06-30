@@ -3,7 +3,7 @@
 
 -- Collections gain a per-collection currency, optional geolocation (shown on a
 -- map when the collection is opened), and user-defined custom fields.
-ALTER TABLE collections ADD COLUMN currency       TEXT NOT NULL DEFAULT 'USD';
+ALTER TABLE collections ADD COLUMN currency       TEXT NOT NULL DEFAULT 'EUR';
 ALTER TABLE collections ADD COLUMN location_lat   REAL;
 ALTER TABLE collections ADD COLUMN location_lng   REAL;
 ALTER TABLE collections ADD COLUMN location_label TEXT NOT NULL DEFAULT '';

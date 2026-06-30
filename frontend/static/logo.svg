@@ -20,9 +20,9 @@
 </g>
 <g transform="matrix(15.12684 0 0 10.42604 958.48358 1409.82125)">
 <linearGradient id="SVGID_159" gradientUnits="userSpaceOnUse" gradientTransform="matrix(1 0 0 1 8.96448 30.978)" x1="39.035494962599905" y1="0" x2="39.035494962599905" y2="36.41937501480339">
-<stop offset="0%" style="stop-color:rgb(9, 2, 112);"/>
-<stop offset="47%" style="stop-color:rgba(16,38,228,1);"/>
-<stop offset="100%" style="stop-color:rgba(68,165,255,1);"/>
+<stop offset="0%" style="stop-color: rgba(20,45,200,1);"/>
+<stop offset="50%" style="stop-color: rgba(20,50,240,1);"/>
+<stop offset="100%" style="stop-color: rgba(60,120,255,1);"/>
 </linearGradient>
 <path transform=" translate(-47.99998, -49.18769)" style="stroke-width: 0; fill: url(#SVGID_159)" vector-effect="non-scaling-stroke" stroke-linecap="round" d="M 9.113 65.022 C 8.317 64.924 10.738 54.951 15.96 47.553 C 23.243 37.234 35.374 30.978 48 30.978 C 60.626 30.978 72.756 37.235 80.039 47.553 C 85.261 54.952 87.683 64.925 86.887 65.023 C 61.156 68.189 34.844 68.189 9.113 65.022 Z"/>
 </g>

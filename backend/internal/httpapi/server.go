@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -34,22 +35,104 @@ type Server struct {
 	notify    *notify.Service
 	inventory *inventory.Service
 	router    chi.Router
+	// trustedProxies holds the parsed CH_TRUSTED_PROXIES entries. Requests
+	// whose immediate peer is in this set may supply the real client IP via
+	// X-Real-IP / X-Forwarded-For.
+	trustedProxies []*net.IPNet
 }
 
 // New constructs a Server and builds its route tree.
 func New(cfg *config.Config, db *sql.DB, logger *slog.Logger) (*Server, error) {
 	s := &Server{
-		cfg:       cfg,
-		db:        db,
-		logger:    logger,
-		auth:      auth.NewService(db, cfg),
-		notify:    notify.NewService(db),
-		inventory: inventory.NewService(db),
+		cfg:            cfg,
+		db:             db,
+		logger:         logger,
+		auth:           auth.NewService(db, cfg),
+		notify:         notify.NewService(db),
+		inventory:      inventory.NewService(db),
+		trustedProxies: parseTrustedProxies(cfg.TrustedProxies, logger),
 	}
 	if err := s.routes(); err != nil {
 		return nil, err
 	}
 	return s, nil
+}
+
+// parseTrustedProxies turns CIDR/IP strings into networks. Bare IPs become
+// /32 or /128 networks. Invalid entries are logged and skipped.
+func parseTrustedProxies(entries []string, logger *slog.Logger) []*net.IPNet {
+	nets := make([]*net.IPNet, 0, len(entries))
+	for _, raw := range entries {
+		entry := strings.TrimSpace(raw)
+		if entry == "" {
+			continue
+		}
+		if !strings.Contains(entry, "/") {
+			if ip := net.ParseIP(entry); ip != nil {
+				if ip.To4() != nil {
+					entry += "/32"
+				} else {
+					entry += "/128"
+				}
+			}
+		}
+		_, network, err := net.ParseCIDR(entry)
+		if err != nil {
+			if logger != nil {
+				logger.Warn("ignoring invalid CH_TRUSTED_PROXIES entry", "entry", raw, "error", err)
+			}
+			continue
+		}
+		nets = append(nets, network)
+	}
+	return nets
+}
+
+// clientIP resolves the originating client IP for a request. When the immediate
+// peer (r.RemoteAddr) is a trusted proxy, it honors X-Real-IP, then the
+// left-most entry of X-Forwarded-For; otherwise it returns the peer address.
+func (s *Server) clientIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	if !s.peerIsTrusted(host) {
+		return host
+	}
+	if realIP := strings.TrimSpace(r.Header.Get("X-Real-IP")); realIP != "" {
+		if net.ParseIP(realIP) != nil {
+			return realIP
+		}
+	}
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		for _, part := range strings.Split(xff, ",") {
+			candidate := strings.TrimSpace(part)
+			if net.ParseIP(candidate) != nil {
+				return candidate
+			}
+		}
+	}
+	return host
+}
+
+// peerIsTrusted reports whether the given peer host is a configured trusted
+// proxy. If no proxies are configured, any peer is trusted so that forwarded
+// headers work out of the box for single-proxy deployments (mirroring how
+// X-Forwarded-Proto is already honored for the cookie Secure flag).
+func (s *Server) peerIsTrusted(host string) bool {
+	if len(s.trustedProxies) == 0 {
+		return true
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	for _, network := range s.trustedProxies {
+		if network.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }
 
 // Handler returns the root HTTP handler.

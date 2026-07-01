@@ -35,7 +35,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		req.Identifier,
 		req.Password,
 		r.UserAgent(),
-		r.RemoteAddr,
+		s.clientIP(r),
 	)
 	if err != nil {
 		s.logger.WarnContext(r.Context(), "login failed", "identifier", strings.TrimSpace(req.Identifier), "error", err)

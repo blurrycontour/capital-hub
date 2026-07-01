@@ -288,7 +288,7 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sessionID, expiresAt, err := s.auth.LoginByUserID(r.Context(), user.ID, r.UserAgent(), r.RemoteAddr)
+	sessionID, expiresAt, err := s.auth.LoginByUserID(r.Context(), user.ID, r.UserAgent(), s.clientIP(r))
 	if err != nil {
 		s.logger.ErrorContext(r.Context(), "create oidc session failed", "error", err)
 		writeAPIError(w, http.StatusInternalServerError, "failed to create session")

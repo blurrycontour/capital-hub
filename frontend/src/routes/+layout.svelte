@@ -475,9 +475,11 @@
 						href={item.href}
 						title={item.label}
 						aria-label={item.label}
-						class="relative flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[0.65rem] font-medium text-slate-500 hover:text-sky-600 dark:text-slate-400"
-						class:text-sky-600={active}
-						class:dark:text-sky-400={active}
+						class={`relative flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[0.65rem] font-medium hover:text-sky-600 ${
+							active
+								? 'text-sky-600 dark:text-sky-400'
+								: 'text-slate-500 dark:text-slate-400'
+						}`}
 					>
 						<span class="relative">
 							<Icon name={item.icon} class="h-6 w-6" />
@@ -494,7 +496,7 @@
 				{/each}
 			</nav>
 		</div>
-	{:else if isLoginRoute
+	{:else if isLoginRoute}
 		{@render children()}
 	{:else}
 		<div class="flex min-h-screen items-center justify-center text-sm text-slate-500">

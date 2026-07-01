@@ -15,6 +15,8 @@
 	let { children } = $props();
 	let theme = $state<Theme>('light');
 	let authError = $state('');
+	// User account menu (top-right) modal.
+	let userMenuOpen = $state(false);
 
 	// PWA service-worker update prompt.
 	const { needRefresh, updateServiceWorker } = useRegisterSW();
@@ -218,8 +220,8 @@
 						{#if expanded}
 							<img src="/logo-text.svg" alt="Capital Hub" class="h-7 w-auto rounded" />
 						{:else}
-							<span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white">
-								<img src="/logo.svg" alt="Capital Hub" class="h-6 w-6" />
+							<span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg">
+								<img src="/logo.svg" alt="Capital Hub" class="h-10 w-10" />
 							</span>
 						{/if}
 					</div>
@@ -259,74 +261,11 @@
 						{/if}
 					{/each}
 				</nav>
-
-				<div class="shrink-0 space-y-1 border-t border-slate-200 p-2 text-base dark:border-slate-800">
-					{#if auth.user?.isAdmin}
-						<a
-							href="/admin/settings"
-							title="Admin Panel"
-							class="flex items-center gap-3 rounded-md px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-800"
-							class:justify-center={!expanded}
-							class:bg-slate-100={$page.url.pathname.startsWith('/admin/settings')}
-							class:dark:bg-slate-800={$page.url.pathname.startsWith('/admin/settings')}
-							class:font-semibold={$page.url.pathname.startsWith('/admin/settings')}
-							class:text-sky-600={$page.url.pathname.startsWith('/admin/settings')}
-						>
-							<Icon name="shield" class="h-5 w-5 shrink-0" />
-							{#if expanded}<span class="truncate">Admin Panel</span>{/if}
-						</a>
-					{/if}
-
-					{#if auth.user}
-						<a
-							href="/settings"
-							title="User Profile"
-							class="mt-1 flex items-center gap-2 rounded-md px-2 py-2 hover:bg-slate-100 dark:hover:bg-slate-800"
-							class:justify-center={!expanded}
-							class:bg-slate-100={$page.url.pathname.startsWith('/settings')}
-							class:dark:bg-slate-800={$page.url.pathname.startsWith('/settings')}
-						>
-							{#if auth.user.avatarPath}
-								<img
-									src={auth.user.avatarPath}
-								alt="Profile"
-								class="h-8 w-8 shrink-0 rounded-full object-cover"
-							/>
-							{:else}
-								<span
-									class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sky-600 text-xs font-semibold text-white"
-								>
-									{initials}
-								</span>
-							{/if}
-							{#if expanded}
-								<span class="min-w-0">
-									<span class="block truncate text-base font-medium">
-										{auth.user.displayName || auth.user.username}
-									</span>
-									<span class="block truncate text-sm text-slate-500">{auth.user.email}</span>
-								</span>
-							{/if}
-						</a>
-					{/if}
-
-					<button
-						type="button"
-						onclick={doLogout}
-						title="Logout"
-						aria-label="Logout"
-						class="flex w-full cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-slate-600 hover:bg-slate-100 hover:text-red-600 dark:text-slate-300 dark:hover:bg-slate-800"
-						class:justify-center={!expanded}
-					>
-						<Icon name="logout" class="h-5 w-5 shrink-0" />
-						{#if expanded}<span>Logout</span>{/if}
-					</button>
-				</div>
 			</aside>
 
 			<div class="flex min-w-0 flex-1 flex-col">
 				<header
-					class="flex h-14 items-center justify-between border-b border-slate-200 px-4 dark:border-slate-800"
+					class="flex h-14 items-center justify-between border-b border-slate-200 px-4 sm:px-6 dark:border-slate-800"
 				>
 					<div class="flex min-w-0 items-center gap-2">
 						<button
@@ -356,7 +295,7 @@
 							{/each}
 						</nav>
 					</div>
-					<div class="flex items-center gap-2">
+					<div class="flex items-center gap-4 pr-1">
 						<button
 							type="button"
 							onclick={toggleTheme}
@@ -366,6 +305,122 @@
 						>
 							<Icon name={theme === 'dark' ? 'sun' : 'moon'} class="h-5 w-5" />
 						</button>
+
+						{#if auth.user}
+							<div class="relative">
+								<div class="flex items-center justify-center">
+									<button
+										type="button"
+										onclick={() => (userMenuOpen = !userMenuOpen)}
+										title="Account menu"
+										aria-label="Open account menu"
+										aria-expanded={userMenuOpen}
+										class="rounded-full ring-2 ring-transparent transition hover:ring-sky-500/40 focus:outline-none focus-visible:ring-sky-500"
+									>
+										{#if auth.user.avatarPath}
+											<img
+												src={auth.user.avatarPath}
+												alt="Profile"
+												class="h-9 w-9 shrink-0 rounded-full object-cover"
+											/>
+										{:else}
+											<span
+												class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sky-600 text-sm font-semibold text-white"
+											>
+												{initials}
+											</span>
+										{/if}
+									</button>
+								</div>
+
+								{#if userMenuOpen}
+									<!-- Click-away backdrop with blur -->
+									<button
+										type="button"
+										aria-label="Close account menu"
+										onclick={() => (userMenuOpen = false)}
+										class="fixed inset-0 z-40 cursor-default bg-slate-900/20 backdrop-blur-sm"
+									></button>
+
+									<!-- Dropdown attached to the button -->
+									<div
+										class="absolute right-0 top-full z-50 mt-2 w-64 overflow-hidden rounded-xl border border-slate-200 bg-white text-center shadow-xl dark:border-slate-800 dark:bg-slate-900"
+										role="menu"
+									>
+										<div
+											class="flex flex-col items-center gap-2 border-b border-slate-200 px-4 py-4 dark:border-slate-800"
+										>
+											{#if auth.user.avatarPath}
+												<img
+													src={auth.user.avatarPath}
+													alt="Profile"
+													class="h-14 w-14 rounded-full object-cover"
+												/>
+											{:else}
+												<span
+													class="flex h-14 w-14 items-center justify-center rounded-full bg-sky-600 text-lg font-semibold text-white"
+												>
+													{initials}
+												</span>
+											{/if}
+											<div class="min-w-0">
+												<p class="truncate text-sm font-semibold">
+													{auth.user.displayName || auth.user.username}
+												</p>
+												<p class="truncate text-xs text-slate-500">{auth.user.email}</p>
+											</div>
+										</div>
+
+										<div class="p-2">
+											<a
+												href="/account"
+												onclick={() => (userMenuOpen = false)}
+												class="flex items-center justify-center gap-2 rounded-md px-3 py-2.5 text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
+												role="menuitem"
+											>
+												<Icon name="user" class="h-5 w-5 shrink-0 text-slate-500" />
+												<span>Account</span>
+											</a>
+											<a
+												href="/settings"
+												onclick={() => (userMenuOpen = false)}
+												class="flex items-center justify-center gap-2 rounded-md px-3 py-2.5 text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
+												role="menuitem"
+											>
+												<Icon name="cog" class="h-5 w-5 shrink-0 text-slate-500" />
+												<span>Settings</span>
+											</a>
+											{#if auth.user.isAdmin}
+												<a
+													href="/admin/settings"
+													onclick={() => (userMenuOpen = false)}
+													class="flex items-center justify-center gap-2 rounded-md px-3 py-2.5 text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
+													role="menuitem"
+												>
+													<Icon name="shield" class="h-5 w-5 shrink-0 text-slate-500" />
+													<span>Admin Panel</span>
+												</a>
+											{/if}
+										</div>
+
+										<div class="border-t border-slate-200 p-2 dark:border-slate-800">
+											<button
+												type="button"
+												onclick={() => {
+													userMenuOpen = false;
+													void doLogout();
+												}}
+												class="flex w-full items-center justify-center gap-2 rounded-md px-3 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-red-600 dark:text-slate-300 dark:hover:bg-slate-800"
+												role="menuitem"
+											>
+												<Icon name="logout" class="h-4 w-4" />
+												Logout
+											</button>
+										</div>
+									</div>
+								{/if}
+							</div>
+						{/if}
 					</div>
 				</header>
 

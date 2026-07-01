@@ -6,7 +6,11 @@
 		uploadAvatar,
 		requestAccountDeletion,
 		confirmAccountDeletion,
-		getVersion
+		getVersion,
+		listSessions,
+		revokeSession,
+		revokeOtherSessions,
+		type SessionInfo
 	} from '$lib/api';
 	import Icon from '$lib/Icon.svelte';
 	import Modal from '$lib/Modal.svelte';
@@ -24,6 +28,7 @@
 		} catch {
 			/* version is best-effort */
 		}
+		void refreshSessions();
 	});
 
 	// Editable form state, seeded from the current user.
@@ -60,6 +65,80 @@
 		deleteError = '';
 		deleteModalOpen = true;
 	}
+
+	// Active login sessions.
+	let sessions = $state<SessionInfo[]>([]);
+	let loadingSessions = $state(false);
+	let sessionsError = $state('');
+	let revokingId = $state<string | null>(null);
+	let revokingOthers = $state(false);
+
+	async function refreshSessions() {
+		loadingSessions = true;
+		sessionsError = '';
+		try {
+			sessions = await listSessions();
+		} catch (err) {
+			sessionsError = err instanceof Error ? err.message : 'Failed to load sessions';
+		} finally {
+			loadingSessions = false;
+		}
+	}
+
+	async function doRevokeSession(id: string) {
+		revokingId = id;
+		sessionsError = '';
+		try {
+			await revokeSession(id);
+			sessions = sessions.filter((s) => s.id !== id);
+		} catch (err) {
+			sessionsError = err instanceof Error ? err.message : 'Failed to revoke session';
+		} finally {
+			revokingId = null;
+		}
+	}
+
+	async function doRevokeOtherSessions() {
+		revokingOthers = true;
+		sessionsError = '';
+		try {
+			await revokeOtherSessions();
+			sessions = sessions.filter((s) => s.current);
+		} catch (err) {
+			sessionsError = err instanceof Error ? err.message : 'Failed to revoke sessions';
+		} finally {
+			revokingOthers = false;
+		}
+	}
+
+	const hasOtherSessions = $derived(sessions.some((s) => !s.current));
+
+	// Best-effort, human-readable device/browser from a user-agent string.
+	function describeSession(ua: string): string {
+		if (!ua) return 'Unknown device';
+		let os = '';
+		if (/Windows/i.test(ua)) os = 'Windows';
+		else if (/iPhone|iPad|iOS/i.test(ua)) os = 'iOS';
+		else if (/Mac OS X|Macintosh/i.test(ua)) os = 'macOS';
+		else if (/Android/i.test(ua)) os = 'Android';
+		else if (/Linux/i.test(ua)) os = 'Linux';
+		let browser = '';
+		if (/Edg\//i.test(ua)) browser = 'Edge';
+		else if (/OPR\/|Opera/i.test(ua)) browser = 'Opera';
+		else if (/Firefox\//i.test(ua)) browser = 'Firefox';
+		else if (/Chrome\//i.test(ua)) browser = 'Chrome';
+		else if (/Safari\//i.test(ua)) browser = 'Safari';
+		const parts = [browser, os].filter(Boolean);
+		return parts.length ? parts.join(' · ') : 'Unknown device';
+	}
+
+	function formatDate(value: string): string {
+		if (!value) return '—';
+		const d = new Date(value.includes('T') ? value : value.replace(' ', 'T') + 'Z');
+		if (isNaN(d.getTime())) return value;
+		return d.toLocaleString();
+	}
+
 
 	async function sendDeletionCode() {
 		sendingCode = true;
@@ -331,7 +410,7 @@
 		<!-- Account (read-only) -->
 		<div class="space-y-4 rounded-lg border border-slate-200 p-5 dark:border-slate-800">
 			<div class="flex items-center gap-2">
-				<Icon name="shield" class="h-5 w-5 text-slate-500" />
+				<Icon name="info" class="h-5 w-5 text-slate-500" />
 				<h2 class="text-lg font-semibold">Account details</h2>
 			</div>
 			<dl class="grid gap-4 sm:grid-cols-3">
@@ -456,6 +535,84 @@
 				</button>
 			</div>
 		</form>
+
+		<!-- Active sessions -->
+		<section class="space-y-4 rounded-lg border border-slate-200 p-5 dark:border-slate-800">
+			<div class="flex flex-wrap items-center justify-between gap-2">
+				<div class="flex items-center gap-2">
+					<Icon name="login" class="h-5 w-5 text-slate-500" />
+					<h2 class="text-lg font-semibold">Active sessions</h2>
+				</div>
+				{#if hasOtherSessions}
+					<button
+						type="button"
+						onclick={() => void doRevokeOtherSessions()}
+						disabled={revokingOthers}
+						class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800/60"
+					>
+						<Icon name="logout" class="h-4 w-4" />
+						{revokingOthers ? 'Signing out…' : 'Sign out all other sessions'}
+					</button>
+				{/if}
+			</div>
+
+			<p class="text-sm text-slate-600 dark:text-slate-400">
+				These are the devices currently signed in to your account. Sessions expire automatically;
+				revoke any you don't recognise.
+			</p>
+
+			{#if sessionsError}
+				<div
+					class="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-700 dark:bg-red-950/40 dark:text-red-200"
+				>
+					{sessionsError}
+				</div>
+			{/if}
+
+			{#if loadingSessions}
+				<p class="text-sm text-slate-500">Loading sessions…</p>
+			{:else if sessions.length === 0}
+				<p class="text-sm text-slate-500">No active sessions.</p>
+			{:else}
+				<ul class="divide-y divide-slate-100 dark:divide-slate-800">
+					{#each sessions as session (session.id)}
+						<li class="flex flex-wrap items-center justify-between gap-3 py-3">
+							<div class="min-w-0">
+								<div class="flex items-center gap-2">
+									<span class="truncate font-medium">{describeSession(session.userAgent)}</span>
+									{#if session.current}
+										<span
+											class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300"
+										>
+											This device
+										</span>
+									{/if}
+								</div>
+								<div class="mt-0.5 space-y-0.5 text-xs text-slate-500">
+									{#if session.ip}
+										<div>IP {session.ip}</div>
+									{/if}
+									<div>
+										Signed in {formatDate(session.createdAt)} · expires {formatDate(session.expiresAt)}
+									</div>
+								</div>
+							</div>
+							{#if !session.current}
+								<button
+									type="button"
+									onclick={() => void doRevokeSession(session.id)}
+									disabled={revokingId === session.id}
+									class="inline-flex items-center gap-1.5 rounded-md border border-rose-300 px-3 py-1.5 text-sm font-medium text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-900/60 dark:text-rose-400 dark:hover:bg-rose-950/40"
+								>
+									<Icon name="close" class="h-4 w-4" />
+									{revokingId === session.id ? 'Revoking…' : 'Revoke'}
+								</button>
+							{/if}
+						</li>
+					{/each}
+				</ul>
+			{/if}
+		</section>
 
 		<!-- Danger zone: delete account -->
 		<section class="space-y-4 rounded-lg border border-rose-300 p-5 dark:border-rose-900/60">

@@ -130,6 +130,30 @@ export async function logout(): Promise<void> {
 	await parseJSON<{ ok: boolean }>(res);
 }
 
+export type SessionInfo = {
+	id: string;
+	userAgent: string;
+	ip: string;
+	createdAt: string;
+	expiresAt: string;
+	current: boolean;
+};
+
+export async function listSessions(): Promise<SessionInfo[]> {
+	const res = await fetch('/api/v1/auth/me/sessions');
+	const body = await parseJSON<{ sessions: SessionInfo[] }>(res);
+	return body.sessions;
+}
+
+export async function revokeSession(id: string): Promise<void> {
+	await mutate<{ ok: boolean }>(`/api/v1/auth/me/sessions/${encodeURIComponent(id)}`, 'DELETE');
+}
+
+export async function revokeOtherSessions(): Promise<number> {
+	const body = await mutate<{ ok: boolean; revoked: number }>('/api/v1/auth/me/sessions', 'DELETE');
+	return body.revoked;
+}
+
 export async function listNotifications(limit = 50): Promise<NotificationItem[]> {
 	const res = await fetch(`/api/v1/notifications?limit=${limit}`);
 	const body = await parseJSON<{ notifications: NotificationItem[] }>(res);

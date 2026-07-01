@@ -76,6 +76,65 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"user": user})
 }
 
+// currentSessionID returns the raw session token from the request cookie, or
+// "" when absent.
+func (s *Server) currentSessionID(r *http.Request) string {
+	if c, err := r.Cookie(s.cfg.SessionCookieName); err == nil {
+		return c.Value
+	}
+	return ""
+}
+
+func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
+	user := userFromContext(r)
+	if user == nil {
+		writeAPIError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	sessions, err := s.auth.ListSessions(r.Context(), user.ID, s.currentSessionID(r))
+	if err != nil {
+		s.logger.ErrorContext(r.Context(), "list sessions failed", "error", err)
+		writeAPIError(w, http.StatusInternalServerError, "failed to list sessions")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"sessions": sessions})
+}
+
+func (s *Server) handleRevokeSession(w http.ResponseWriter, r *http.Request) {
+	user := userFromContext(r)
+	if user == nil {
+		writeAPIError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	publicID := strings.TrimSpace(chi.URLParam(r, "id"))
+	revoked, err := s.auth.RevokeSession(r.Context(), user.ID, publicID, s.currentSessionID(r))
+	if err != nil {
+		s.logger.ErrorContext(r.Context(), "revoke session failed", "error", err)
+		writeAPIError(w, http.StatusInternalServerError, "failed to revoke session")
+		return
+	}
+	if !revoked {
+		writeAPIError(w, http.StatusBadRequest, "session not found or cannot be revoked (use logout for the current session)")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) handleRevokeOtherSessions(w http.ResponseWriter, r *http.Request) {
+	user := userFromContext(r)
+	if user == nil {
+		writeAPIError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	revoked, err := s.auth.RevokeOtherSessions(r.Context(), user.ID, s.currentSessionID(r))
+	if err != nil {
+		s.logger.ErrorContext(r.Context(), "revoke other sessions failed", "error", err)
+		writeAPIError(w, http.StatusInternalServerError, "failed to revoke sessions")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "revoked": revoked})
+}
+
 func (s *Server) handleGetPreferences(w http.ResponseWriter, r *http.Request) {
 	user := userFromContext(r)
 	if user == nil {

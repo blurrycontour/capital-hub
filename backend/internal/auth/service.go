@@ -763,21 +763,108 @@ func (s *Service) createSession(ctx context.Context, userID int64, userAgent, re
 	if err != nil {
 		return "", time.Time{}, fmt.Errorf("generate session id: %w", err)
 	}
+	publicID, err := randomToken(16)
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("generate session public id: %w", err)
+	}
 
 	expiresAt := time.Now().UTC().Add(time.Duration(s.cfg.SessionTTLHours) * time.Hour)
 	if _, err := s.db.ExecContext(
 		ctx,
-		`INSERT INTO sessions (id, user_id, user_agent, ip, expires_at)
-		 VALUES (?, ?, ?, ?, ?)`,
+		`INSERT INTO sessions (id, user_id, user_agent, ip, expires_at, public_id)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
 		sessionID,
 		userID,
 		truncate(userAgent, 512),
 		truncate(clientIP(remoteAddr), 128),
 		sqliteTime(expiresAt),
+		publicID,
 	); err != nil {
 		return "", time.Time{}, fmt.Errorf("create session: %w", err)
 	}
 	return sessionID, expiresAt, nil
+}
+
+// Session is a public, non-secret view of an active login session, safe to
+// expose to the owning user. It never carries the real session token.
+type Session struct {
+	// PublicID is an opaque handle used to revoke this session.
+	PublicID  string `json:"id"`
+	UserAgent string `json:"userAgent"`
+	IP        string `json:"ip"`
+	CreatedAt string `json:"createdAt"`
+	ExpiresAt string `json:"expiresAt"`
+	// Current is true for the session making the request.
+	Current bool `json:"current"`
+}
+
+// ListSessions returns the user's active (non-expired) sessions, newest first.
+// The session matching currentSessionID is flagged as current.
+func (s *Service) ListSessions(ctx context.Context, userID int64, currentSessionID string) ([]Session, error) {
+	rows, err := s.db.QueryContext(
+		ctx,
+		`SELECT id, public_id, user_agent, ip, created_at, expires_at
+		 FROM sessions
+		 WHERE user_id = ? AND datetime(expires_at) > datetime('now')
+		 ORDER BY created_at DESC`,
+		userID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list sessions: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]Session, 0)
+	for rows.Next() {
+		var id string
+		var sess Session
+		if err := rows.Scan(&id, &sess.PublicID, &sess.UserAgent, &sess.IP, &sess.CreatedAt, &sess.ExpiresAt); err != nil {
+			return nil, fmt.Errorf("scan session: %w", err)
+		}
+		sess.Current = id != "" && id == currentSessionID
+		out = append(out, sess)
+	}
+	return out, rows.Err()
+}
+
+// RevokeSession deletes one of the user's sessions by its public id. The
+// current session (currentSessionID) cannot be revoked this way — callers
+// should use Logout for that. Returns true if a session was removed.
+func (s *Service) RevokeSession(ctx context.Context, userID int64, publicID, currentSessionID string) (bool, error) {
+	if strings.TrimSpace(publicID) == "" {
+		return false, nil
+	}
+	res, err := s.db.ExecContext(
+		ctx,
+		`DELETE FROM sessions WHERE user_id = ? AND public_id = ? AND id != ?`,
+		userID, publicID, currentSessionID,
+	)
+	if err != nil {
+		return false, fmt.Errorf("revoke session: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("revoke session rows: %w", err)
+	}
+	return n > 0, nil
+}
+
+// RevokeOtherSessions deletes all of the user's sessions except the current
+// one, returning how many were removed.
+func (s *Service) RevokeOtherSessions(ctx context.Context, userID int64, currentSessionID string) (int64, error) {
+	res, err := s.db.ExecContext(
+		ctx,
+		`DELETE FROM sessions WHERE user_id = ? AND id != ?`,
+		userID, currentSessionID,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("revoke other sessions: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("revoke other sessions rows: %w", err)
+	}
+	return n, nil
 }
 
 func (s *Service) findOrCreateOIDCUserTx(

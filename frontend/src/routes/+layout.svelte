@@ -27,6 +27,8 @@
 	// Mobile off-canvas drawer state (separate from desktop collapse).
 	let mobileOpen = $state(false);
 	let isMobile = $state(false);
+	// On mobile the top bar hides while scrolling down and reappears on scroll up.
+	let headerHidden = $state(false);
 
 	const SIDEBAR_KEY = 'ch-sidebar';
 
@@ -43,6 +45,9 @@
 	// The sidebar is expanded unless explicitly collapsed (pure toggle).
 	// On mobile the off-canvas drawer always shows full-width labels.
 	const expanded = $derived(isMobile ? true : !collapsed);
+
+	// Permanent bottom navigation on mobile (excludes Help).
+	const bottomNavItems = $derived(navItems.filter((item) => item.href !== '/help'));
 
 	const initials = $derived.by(() => {
 		const u = auth.user;
@@ -87,7 +92,26 @@
 		const apply = () => (isMobile = mq.matches);
 		apply();
 		mq.addEventListener('change', apply);
-		return () => mq.removeEventListener('change', apply);
+
+		// Hide the top bar while scrolling down on mobile, reveal on scroll up.
+		let lastScrollY = window.scrollY;
+		const onScroll = () => {
+			const y = window.scrollY;
+			if (!mq.matches) {
+				headerHidden = false;
+			} else if (y > lastScrollY && y > 64) {
+				headerHidden = true;
+			} else if (y < lastScrollY) {
+				headerHidden = false;
+			}
+			lastScrollY = y;
+		};
+		window.addEventListener('scroll', onScroll, { passive: true });
+
+		return () => {
+			mq.removeEventListener('change', apply);
+			window.removeEventListener('scroll', onScroll);
+		};
 	});
 
 	// Close the mobile drawer whenever the route changes.
@@ -265,7 +289,8 @@
 
 			<div class="flex min-w-0 flex-1 flex-col">
 				<header
-					class="flex h-14 items-center justify-between border-b border-slate-200 px-4 sm:px-6 dark:border-slate-800"
+					class="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-slate-200 bg-slate-50 px-4 transition-transform duration-200 sm:px-6 dark:border-slate-800 dark:bg-slate-950"
+					class:-translate-y-full={headerHidden && isMobile}
 				>
 					<div class="flex min-w-0 items-center gap-2">
 						<button
@@ -295,7 +320,7 @@
 							{/each}
 						</nav>
 					</div>
-					<div class="flex items-center gap-4 pr-1">
+					<div class="flex items-center gap-4">
 						<button
 							type="button"
 							onclick={toggleTheme}
@@ -424,7 +449,7 @@
 					</div>
 				</header>
 
-				<main class="flex-1 p-4">
+				<main class="flex-1 p-4 pb-20 md:pb-4">
 					{#if authError}
 						<div
 							class="mb-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-amber-800 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
@@ -435,8 +460,41 @@
 					{@render children()}
 				</main>
 			</div>
+
+			<!-- Permanent bottom navigation (mobile only) -->
+			<nav
+				class="fixed inset-x-0 bottom-0 z-40 flex items-stretch border-t border-slate-200 bg-white md:hidden dark:border-slate-800 dark:bg-slate-900"
+				aria-label="Primary"
+			>
+				{#each bottomNavItems as item (item.href)}
+					{@const active =
+						item.href === '/'
+							? $page.url.pathname === '/'
+							: $page.url.pathname.startsWith(item.href)}
+					<a
+						href={item.href}
+						title={item.label}
+						aria-label={item.label}
+						class="relative flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[0.65rem] font-medium text-slate-500 hover:text-sky-600 dark:text-slate-400"
+						class:text-sky-600={active}
+						class:dark:text-sky-400={active}
+					>
+						<span class="relative">
+							<Icon name={item.icon} class="h-6 w-6" />
+							{#if item.href === '/notifications' && notifCount.value > 0}
+								<span
+									class="absolute -right-2 -top-1.5 rounded-full bg-sky-600 px-1 py-0.5 text-[0.6rem] font-semibold leading-none text-white"
+								>
+									{notifCount.value > 99 ? '99+' : notifCount.value}
+								</span>
+							{/if}
+						</span>
+						<span class="truncate">{item.label}</span>
+					</a>
+				{/each}
+			</nav>
 		</div>
-	{:else if isLoginRoute}
+	{:else if isLoginRoute
 		{@render children()}
 	{:else}
 		<div class="flex min-h-screen items-center justify-center text-sm text-slate-500">

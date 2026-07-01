@@ -1,7 +1,8 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import Icon from '$lib/Icon.svelte';
 	import { auth } from '$lib/auth.svelte';
+	import { breadcrumbs } from '$lib/breadcrumb.svelte';
 	import {
 		adminCreateUser,
 		adminDeleteUser,
@@ -71,6 +72,7 @@
 	let creatingUser = $state(false);
 
 	onMount(async () => {
+		breadcrumbs.setTrail([{ label: 'Administration', href: '/admin/settings' }]);
 		await reload();
 		try {
 			const res = await fetch('/api/v1/health');
@@ -80,6 +82,8 @@
 			backendStatus = 'unreachable';
 		}
 	});
+
+	onDestroy(() => breadcrumbs.clearTrail());
 
 	async function reload() {
 		loading = true;

@@ -1,5 +1,6 @@
 # misc
 .github/prompts
+.vscode/
 ch_data/
 
 # --- Backend (Go) ---

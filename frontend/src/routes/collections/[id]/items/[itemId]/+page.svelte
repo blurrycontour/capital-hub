@@ -102,8 +102,29 @@
 	// Expanded entry row (shows full note + edit/delete actions).
 	let expandedEntryId = $state<number | null>(null);
 
+	// Entry briefly highlighted after arriving via a deep link (#entry-<id>).
+	let highlightedEntryId = $state<number | null>(null);
+
 	function toggleExpand(id: number) {
 		expandedEntryId = expandedEntryId === id ? null : id;
+	}
+
+	// When arriving via a deep link like #entry-42, expand and scroll to that
+	// entry, then briefly highlight it. Runs after entries have loaded.
+	async function focusHashEntry() {
+		const hash = $page.url.hash;
+		const match = /^#entry-(\d+)$/.exec(hash);
+		if (!match) return;
+		const id = Number(match[1]);
+		if (!entries.some((e) => e.id === id)) return;
+		expandedEntryId = id;
+		highlightedEntryId = id;
+		await tick();
+		const el = document.getElementById(`entry-${id}`);
+		el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+		setTimeout(() => {
+			if (highlightedEntryId === id) highlightedEntryId = null;
+		}, 2500);
 	}
 
 	// Entry sorting
@@ -185,6 +206,7 @@
 	onMount(async () => {
 		try {
 			await loadAll();
+			await focusHashEntry();
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load item';
 		} finally {
@@ -780,7 +802,11 @@
 						{#each sortedEntries as entry (entry.id)}
 							{@const isOpen = expandedEntryId === entry.id}
 							<tr
-								class="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40"
+								id="entry-{entry.id}"
+								class="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 {highlightedEntryId ===
+								entry.id
+									? 'bg-amber-50 dark:bg-amber-950/30'
+									: ''}"
 								role="button"
 								tabindex="0"
 								aria-expanded={isOpen}

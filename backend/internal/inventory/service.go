@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // ErrNotFound is returned when a record does not exist or is not owned by the
@@ -1395,69 +1396,92 @@ func (s *Service) RecentItems(ctx context.Context, userID int64, includeShared b
 
 // ---------- Search ----------
 
-// SearchResult is a flattened hit across collections and items.
+// Highlight markers wrapped around matched terms in snippets. They are control
+// characters that cannot occur in user text, so the frontend can safely split
+// on them and render matches as <mark> without any HTML-injection risk.
+const (
+	snippetOpen  = "\x01"
+	snippetClose = "\x02"
+)
+
+// SearchResult is a flattened full-text hit across collections, items and
+// entries.
 type SearchResult struct {
-	Type           string `json:"type"` // "collection" | "item"
+	Type           string `json:"type"` // "collection" | "item" | "entry"
 	ID             int64  `json:"id"`
 	Name           string `json:"name"`
-	Description    string `json:"description"`
 	CollectionID   int64  `json:"collectionId"`
 	CollectionName string `json:"collectionName"`
+	ItemID         int64  `json:"itemId"`   // owning item for entries; 0 otherwise
+	ItemName       string `json:"itemName"` // owning item name for entries
+	Snippet        string `json:"snippet"`  // matched text with highlight markers
 }
 
-// Search finds collections and items by name or description for the user.
+// buildFTSMatch turns a raw user query into a safe FTS5 MATCH expression. Each
+// whitespace-separated word is stripped of FTS operators and turned into a
+// prefix term (word*), so results update as the user types.
+func buildFTSMatch(query string) string {
+	terms := make([]string, 0)
+	for _, field := range strings.Fields(query) {
+		var b strings.Builder
+		for _, r := range field {
+			if unicode.IsLetter(r) || unicode.IsDigit(r) {
+				b.WriteRune(r)
+			}
+		}
+		if b.Len() > 0 {
+			terms = append(terms, b.String()+"*")
+		}
+	}
+	return strings.Join(terms, " ")
+}
+
+// Search performs a full-text search across the user's accessible collections,
+// items and entries, ranked by relevance (bm25). Results carry a highlighted
+// snippet of the matched body text.
 func (s *Service) Search(ctx context.Context, userID int64, query string) ([]SearchResult, error) {
-	query = strings.TrimSpace(query)
-	if query == "" {
+	match := buildFTSMatch(query)
+	if match == "" {
 		return []SearchResult{}, nil
 	}
-	like := "%" + query + "%"
 	results := make([]SearchResult, 0)
 
-	colRows, err := s.db.QueryContext(ctx,
-		`SELECT c.id, c.name, c.description FROM collections c
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT f.kind, f.entity_id, f.collection_id, f.item_id, f.title,
+		        c.name AS collection_name, i.name AS item_name,
+		        snippet(search_fts, 5, ?, ?, '…', 10) AS snip
+		 FROM search_fts f
+		 JOIN collections c ON c.id = f.collection_id
+		 LEFT JOIN items i ON i.id = f.item_id
 		 LEFT JOIN collection_shares s ON s.collection_id = c.id AND s.user_id = ?
-		 WHERE (c.user_id = ? OR s.access IS NOT NULL) AND (c.name LIKE ? OR c.description LIKE ?)
-		 ORDER BY c.name COLLATE NOCASE ASC LIMIT 25`,
-		userID, userID, like, like,
+		 WHERE (c.user_id = ? OR s.access IS NOT NULL)
+		   AND search_fts MATCH ?
+		 ORDER BY bm25(search_fts)
+		 LIMIT 60`,
+		snippetOpen, snippetClose, userID, userID, match,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("search collections: %w", err)
+		return nil, fmt.Errorf("search: %w", err)
 	}
-	defer colRows.Close()
-	for colRows.Next() {
-		var r SearchResult
-		r.Type = "collection"
-		if err := colRows.Scan(&r.ID, &r.Name, &r.Description); err != nil {
-			return nil, fmt.Errorf("scan collection hit: %w", err)
+	defer rows.Close()
+	for rows.Next() {
+		var (
+			r        SearchResult
+			itemID   sql.NullInt64
+			itemName sql.NullString
+		)
+		if err := rows.Scan(&r.Type, &r.ID, &r.CollectionID, &itemID, &r.Name,
+			&r.CollectionName, &itemName, &r.Snippet); err != nil {
+			return nil, fmt.Errorf("scan search hit: %w", err)
 		}
-		r.CollectionID = r.ID
-		r.CollectionName = r.Name
-		results = append(results, r)
-	}
-	if err := colRows.Err(); err != nil {
-		return nil, err
-	}
-
-	itemRows, err := s.db.QueryContext(ctx,
-		`SELECT i.id, i.name, i.description, c.id, c.name
-		 FROM items i JOIN collections c ON c.id = i.collection_id
-		 LEFT JOIN collection_shares s ON s.collection_id = c.id AND s.user_id = ?
-		 WHERE (c.user_id = ? OR s.access IS NOT NULL) AND (i.name LIKE ? OR i.description LIKE ?)
-		 ORDER BY i.name COLLATE NOCASE ASC LIMIT 50`,
-		userID, userID, like, like,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("search items: %w", err)
-	}
-	defer itemRows.Close()
-	for itemRows.Next() {
-		var r SearchResult
-		r.Type = "item"
-		if err := itemRows.Scan(&r.ID, &r.Name, &r.Description, &r.CollectionID, &r.CollectionName); err != nil {
-			return nil, fmt.Errorf("scan item hit: %w", err)
+		r.ItemID = itemID.Int64
+		r.ItemName = itemName.String
+		// Only surface a snippet when it actually contains a highlighted match;
+		// otherwise the name alone explains the hit.
+		if !strings.Contains(r.Snippet, snippetOpen) {
+			r.Snippet = ""
 		}
 		results = append(results, r)
 	}
-	return results, itemRows.Err()
+	return results, rows.Err()
 }

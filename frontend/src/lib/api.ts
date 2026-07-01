@@ -402,12 +402,14 @@ export type PortfolioSummary = {
 };
 
 export type SearchResult = {
-	type: 'collection' | 'item';
+	type: 'collection' | 'item' | 'entry';
 	id: number;
 	name: string;
-	description: string;
 	collectionId: number;
 	collectionName: string;
+	itemId: number;
+	itemName: string;
+	snippet: string;
 };
 
 export type ItemInput = {

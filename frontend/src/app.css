@@ -12,6 +12,13 @@ body {
 	height: 100%;
 }
 
+/* Tailwind v4 defaults buttons to the default cursor; restore the hand cursor
+   for all interactive buttons across the app (matches the sidebar buttons). */
+button:not(:disabled),
+[role='button']:not([aria-disabled='true']) {
+	cursor: pointer;
+}
+
 /* Hide scrollbars on mobile devices while keeping scroll functionality. */
 @media (max-width: 767px) {
 	* {

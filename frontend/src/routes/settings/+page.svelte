@@ -289,6 +289,32 @@
 		</div>
 	</section>
 
+	<!-- Developers -->
+	<section class="space-y-4 rounded-lg border border-slate-200 p-5 dark:border-slate-800">
+		<div class="flex items-center gap-2">
+			<Icon name="cog" class="h-5 w-5 text-slate-500" />
+			<h2 class="text-lg font-semibold">Developers</h2>
+		</div>
+		<div class="flex items-start justify-between gap-4">
+			<div class="space-y-0.5">
+				<p class="text-sm font-medium">API documentation</p>
+				<p class="text-sm text-slate-500">
+					Interactive Swagger UI for every endpoint. Try calls directly using your current
+					session.
+				</p>
+			</div>
+			<a
+				href="/api/docs"
+				target="_blank"
+				rel="noopener"
+				class="mt-1 inline-flex shrink-0 items-center gap-1.5 rounded-md border border-slate-300 px-3 py-2 text-sm hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+			>
+				<Icon name="arrow-right" class="h-4 w-4" />
+				Open API Docs
+			</a>
+		</div>
+	</section>
+
 	<!-- App version -->
 	<p class="flex items-center justify-center gap-1.5 text-xs text-slate-400">
 		<Icon name="tag" class="h-3.5 w-3.5" />

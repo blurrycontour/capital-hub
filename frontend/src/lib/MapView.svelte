@@ -2,6 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { loadLeaflet } from '$lib/leaflet';
+	import Icon from '$lib/Icon.svelte';
 
 	type MapMarker = { lat: number; lng: number; label?: string; href?: string };
 
@@ -10,6 +11,9 @@
 		height = 'h-72',
 		zoom = 13
 	}: { markers?: MapMarker[]; height?: string; zoom?: number } = $props();
+
+	// Fullscreen overlay toggle.
+	let expanded = $state(false);
 
 	let mapEl: HTMLDivElement;
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -95,6 +99,20 @@
 		}
 	}
 
+	// Toggle the fullscreen overlay. Leaflet needs invalidateSize after the
+	// container resizes, then we re-fit the markers into the new viewport.
+	function toggleExpand() {
+		expanded = !expanded;
+		setTimeout(() => {
+			map?.invalidateSize();
+			render();
+		}, 80);
+	}
+
+	function onKeydown(e: KeyboardEvent) {
+		if (e.key === 'Escape' && expanded) toggleExpand();
+	}
+
 	async function init() {
 		L = await loadLeaflet();
 
@@ -149,16 +167,35 @@
 
 <!-- `isolate` creates a stacking context so Leaflet's internal high z-index
      panes/controls never paint above app modals. -->
-<div class={`relative isolate ${height}`}>
-	<div
-		bind:this={mapEl}
-		class="h-full w-full rounded-md border border-slate-200 dark:border-slate-800"
-	></div>
-	{#if hint}
-		<div class="pointer-events-none absolute inset-0 z-[400] flex items-center justify-center">
-			<span class="rounded-md bg-slate-900/70 px-3 py-1.5 text-sm font-medium text-white">
-				{hint}
-			</span>
-		</div>
-	{/if}
+<svelte:window on:keydown={expanded ? onKeydown : undefined} />
+
+<div
+	class={expanded
+		? 'fixed inset-0 z-[1000] flex flex-col bg-slate-900/60 p-4 backdrop-blur-sm'
+		: `relative isolate ${height}`}
+>
+	<div class="relative h-full w-full flex-1">
+		<div
+			bind:this={mapEl}
+			class="h-full w-full rounded-md border border-slate-200 dark:border-slate-800"
+		></div>
+
+		<button
+			type="button"
+			onclick={toggleExpand}
+			title={expanded ? 'Minimize map' : 'Expand map'}
+			aria-label={expanded ? 'Minimize map' : 'Expand map'}
+			class="absolute right-2 top-2 z-[500] rounded-md border border-slate-300 bg-white/90 p-1.5 text-slate-600 shadow-sm hover:bg-white hover:text-slate-900 dark:border-slate-600 dark:bg-slate-800/90 dark:text-slate-300 dark:hover:bg-slate-800"
+		>
+			<Icon name={expanded ? 'minimize' : 'expand'} class="h-4 w-4" />
+		</button>
+
+		{#if hint}
+			<div class="pointer-events-none absolute inset-0 z-[400] flex items-center justify-center">
+				<span class="rounded-md bg-slate-900/70 px-3 py-1.5 text-sm font-medium text-white">
+					{hint}
+				</span>
+			</div>
+		{/if}
+	</div>
 </div>

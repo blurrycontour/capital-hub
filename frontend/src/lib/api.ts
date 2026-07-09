@@ -700,6 +700,12 @@ export async function getRecentItems(limit = 8): Promise<Item[]> {
 	return body.items;
 }
 
+export async function getMapItems(): Promise<ItemWithCollection[]> {
+	const res = await fetch('/api/v1/stats/map-items');
+	const body = await parseJSON<{ items: ItemWithCollection[] }>(res);
+	return body.items;
+}
+
 export async function getVersion(): Promise<string> {
 	const res = await fetch('/api/v1/version');
 	const body = await parseJSON<{ version: string }>(res);

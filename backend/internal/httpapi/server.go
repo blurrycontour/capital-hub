@@ -231,6 +231,7 @@ func (s *Server) routes() error {
 		api.With(s.requireAuth).Get("/search", s.handleSearch)
 		api.With(s.requireAuth).Get("/stats/portfolio", s.handlePortfolioStats)
 		api.With(s.requireAuth).Get("/stats/recent-items", s.handleRecentItems)
+		api.With(s.requireAuth).Get("/stats/map-items", s.handleMapItems)
 
 		api.Route("/admin", func(admin chi.Router) {
 			admin.Use(s.requireAuth, s.requireAdmin)

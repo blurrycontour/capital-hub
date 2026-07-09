@@ -920,6 +920,30 @@ func (s *Server) handleRecentItems(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
+// handleMapItems returns every located item the user can access, honoring the
+// user's "include shared collections in statistics" preference. Only items that
+// have coordinates are returned so the dashboard map can plot them.
+func (s *Server) handleMapItems(w http.ResponseWriter, r *http.Request) {
+	user := userFromContext(r)
+	includeShared, err := s.auth.StatsIncludeShared(r.Context(), user.ID)
+	if err != nil {
+		s.writeInventoryError(w, r, err, "map items")
+		return
+	}
+	items, err := s.inventory.ListAllItems(r.Context(), user.ID, includeShared)
+	if err != nil {
+		s.writeInventoryError(w, r, err, "map items")
+		return
+	}
+	located := make([]inventory.ItemWithCollection, 0, len(items))
+	for _, it := range items {
+		if it.LocationLat != nil && it.LocationLng != nil {
+			located = append(located, it)
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": located})
+}
+
 // isValidationErr reports whether an error is a user-facing validation failure
 // (as opposed to an infrastructure error or not-found).
 func isValidationErr(err error) bool {

@@ -674,6 +674,14 @@
         "responses": { "200": { "description": "Recent items" } }
       }
     },
+    "/stats/map-items": {
+      "get": {
+        "tags": ["Search & Stats"],
+        "summary": "Located items for the map",
+        "description": "Every item with coordinates the user can access. Shared items are included when the 'include shared collections in statistics' preference is enabled.",
+        "responses": { "200": { "description": "Located items" } }
+      }
+    },
     "/admin/users": {
       "get": { "tags": ["Admin"], "summary": "List users", "responses": { "200": { "description": "Users" }, "403": { "$ref": "#/components/responses/Forbidden" } } },
       "post": {

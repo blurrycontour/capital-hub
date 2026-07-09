@@ -144,6 +144,27 @@
 		</div>
 	</div>
 
+	<!-- API Docs -->
+	<div class="space-y-4">
+		<h2 class="text-lg font-semibold">API Docs</h2>
+		<div
+			class="flex flex-col items-start gap-3 rounded-lg border border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800"
+		>
+			<p class="min-w-0 text-sm text-slate-600 dark:text-slate-400">
+				Capital Hub ships an interactive OpenAPI (Swagger UI) reference for every endpoint. You can
+				try requests right in the browser using your current signed-in session.
+			</p>
+			<a
+				href="/api/docs"
+				target="_blank"
+				rel="noopener"
+				class="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-slate-300 px-4 py-2 text-sm hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+			>
+				<Icon name="arrow-right" class="h-4 w-4" /> Open API Docs
+			</a>
+		</div>
+	</div>
+
 	<div class="flex flex-wrap gap-3">
 		<a
 			href="/collections"

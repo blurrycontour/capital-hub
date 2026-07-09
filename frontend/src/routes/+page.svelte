@@ -4,17 +4,20 @@
 		listNotifications,
 		getPortfolioStats,
 		getRecentItems,
+		getMapItems,
 		formatCurrency,
 		type NotificationItem,
 		type Item
 	} from '$lib/api';
 	import { auth } from '$lib/auth.svelte';
 	import Icon, { type IconName } from '$lib/Icon.svelte';
+	import MapView from '$lib/MapView.svelte';
 
 	const user = $derived(auth.user);
 
 	let notifications = $state<NotificationItem[]>([]);
 	let recentItems = $state<Item[]>([]);
+	let mapMarkers = $state<{ lat: number; lng: number; label?: string; href?: string }[]>([]);
 	let error = $state('');
 
 	// Portfolio summary loaded from the backend.
@@ -62,13 +65,22 @@
 	onMount(async () => {
 		try {
 			if (auth.user) {
-				const [notes, portfolio, recent] = await Promise.all([
+				const [notes, portfolio, recent, mapItems] = await Promise.all([
 					listNotifications(4),
 					getPortfolioStats(),
-					getRecentItems(6)
+					getRecentItems(6),
+					getMapItems()
 				]);
 				notifications = notes;
 				recentItems = recent;
+				mapMarkers = mapItems
+					.filter((it) => it.locationLat != null && it.locationLng != null)
+					.map((it) => ({
+						lat: it.locationLat as number,
+						lng: it.locationLng as number,
+						label: it.name,
+						href: `/collections/${it.collectionId}/items/${it.id}`
+					}));
 				summary.collections = portfolio.collectionCount;
 				summary.items = portfolio.itemCount;
 				summary.entries = portfolio.entryCount;
@@ -136,6 +148,14 @@
 			</div>
 		{/each}
 	</div>
+
+	<!-- Map of located items -->
+	{#if mapMarkers.length > 0}
+		<div class="space-y-3 rounded-lg border border-slate-200 p-5 dark:border-slate-800">
+			<h2 class="text-lg font-semibold">Map</h2>
+			<MapView markers={mapMarkers} />
+		</div>
+	{/if}
 
 	<!-- Recently modified items -->
 	{#if recentItems.length > 0}

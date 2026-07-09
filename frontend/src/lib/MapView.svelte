@@ -119,7 +119,9 @@
 		const valid = validMarkers();
 		const center: [number, number] = valid.length ? [valid[0].lat, valid[0].lng] : [20, 0];
 		map = L.map(mapEl, { scrollWheelZoom: false }).setView(center, valid.length ? zoom : 2);
-		map.dragging.disable();
+		// Leaflet enables mouse-drag panning by default (desktop). On touch devices
+		// onTouchStart below disables it for single-finger gestures so the page can
+		// still scroll, and re-enables it for two-finger gestures.
 		L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 			maxZoom: 19,
 			attribution: '&copy; OpenStreetMap contributors'

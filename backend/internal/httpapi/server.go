@@ -153,6 +153,7 @@ func (s *Server) routes() error {
 	r.Route("/api/v1", func(api chi.Router) {
 		api.Get("/health", s.handleHealth)
 		api.Get("/version", s.handleVersion)
+		api.With(s.requireAuth).Get("/openapi.json", s.handleOpenAPISpec)
 
 		api.Route("/auth", func(authRouter chi.Router) {
 			authRouter.Get("/csrf", s.handleCSRFToken)
@@ -247,6 +248,9 @@ func (s *Server) routes() error {
 
 	// Liveness probe for orchestrators / proxies.
 	r.Get("/healthz", s.handleHealth)
+
+	// Interactive API documentation (Swagger UI), authenticated users only.
+	r.With(s.requireAuthRedirect).Get("/api/docs", s.handleSwaggerUI)
 
 	// Serve user-uploaded files from disk. Requires a valid session so uploads
 	// are not publicly enumerable.

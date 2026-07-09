@@ -1,0 +1,728 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Capital Hub API",
+    "description": "REST API for Capital Hub. Authentication uses the session cookie set when you sign in to the web app; because you are viewing these docs while authenticated, your browser sends that cookie automatically when you use **Try it out**. For mutating requests (POST/PATCH/PUT/DELETE) the `X-CSRF-Token` header is added for you from the `ch_csrf` cookie.",
+    "version": "1.0.0"
+  },
+  "servers": [{ "url": "/api/v1", "description": "Current server" }],
+  "tags": [
+    { "name": "System", "description": "Health and version" },
+    { "name": "Auth", "description": "Authentication and session" },
+    { "name": "Profile", "description": "Current user profile and preferences" },
+    { "name": "Notifications", "description": "User notifications" },
+    { "name": "Collections", "description": "Collections and sharing" },
+    { "name": "Items", "description": "Items, images and attachments" },
+    { "name": "Entries", "description": "Transaction entries" },
+    { "name": "Search & Stats", "description": "Search and aggregated statistics" },
+    { "name": "Admin", "description": "Administrator-only management endpoints" }
+  ],
+  "components": {
+    "securitySchemes": {
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "ch_session",
+        "description": "Session cookie set at login. Sent automatically by the browser."
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": { "error": { "type": "string" } }
+      },
+      "LoginRequest": {
+        "type": "object",
+        "required": ["identifier", "password"],
+        "properties": {
+          "identifier": { "type": "string", "description": "Username or email", "example": "admin" },
+          "password": { "type": "string", "format": "password", "example": "changeme" }
+        }
+      },
+      "UpdateProfileRequest": {
+        "type": "object",
+        "properties": {
+          "displayName": { "type": "string", "example": "Jane Doe" },
+          "email": { "type": "string", "format": "email", "example": "jane@example.com" }
+        }
+      },
+      "ChangePasswordRequest": {
+        "type": "object",
+        "required": ["currentPassword", "newPassword"],
+        "properties": {
+          "currentPassword": { "type": "string", "format": "password" },
+          "newPassword": { "type": "string", "format": "password" }
+        }
+      },
+      "Preferences": {
+        "type": "object",
+        "properties": {
+          "includeSharedInStats": { "type": "boolean" },
+          "amountDecimals": { "type": "integer", "minimum": 0, "maximum": 2 },
+          "numberFormat": { "type": "string", "enum": ["international", "indian", "european"] },
+          "notifyCollectionShared": { "type": "boolean" },
+          "notifyItemAdded": { "type": "boolean" },
+          "notifyEntryAdded": { "type": "boolean" }
+        }
+      },
+      "ConfirmDeletionRequest": {
+        "type": "object",
+        "required": ["code"],
+        "properties": { "code": { "type": "string", "example": "123456" } }
+      },
+      "CustomField": {
+        "type": "object",
+        "properties": {
+          "label": { "type": "string" },
+          "value": { "type": "string" }
+        }
+      },
+      "Attachment": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "path": { "type": "string" }
+        }
+      },
+      "CollectionInput": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string", "example": "Coins" },
+          "description": { "type": "string" },
+          "currency": { "type": "string", "example": "EUR" },
+          "locationLat": { "type": "number", "nullable": true },
+          "locationLng": { "type": "number", "nullable": true },
+          "locationLabel": { "type": "string" },
+          "customFields": { "type": "array", "items": { "$ref": "#/components/schemas/CustomField" } }
+        }
+      },
+      "ItemInput": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string", "example": "1988 Silver Dollar" },
+          "description": { "type": "string" },
+          "images": { "type": "array", "items": { "type": "string" } },
+          "locationLat": { "type": "number", "nullable": true },
+          "locationLng": { "type": "number", "nullable": true },
+          "locationLabel": { "type": "string" },
+          "attachments": { "type": "array", "items": { "$ref": "#/components/schemas/Attachment" } },
+          "customFields": { "type": "array", "items": { "$ref": "#/components/schemas/CustomField" } }
+        }
+      },
+      "EntryInput": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "example": "Purchase" },
+          "amount": { "type": "number", "example": 125.5 },
+          "kind": { "type": "string", "enum": ["debit", "credit"], "example": "debit" },
+          "note": { "type": "string" },
+          "occurredOn": { "type": "string", "format": "date", "example": "2026-01-15" },
+          "attachments": { "type": "array", "items": { "$ref": "#/components/schemas/Attachment" } }
+        }
+      },
+      "MoveItemRequest": {
+        "type": "object",
+        "required": ["collectionId"],
+        "properties": { "collectionId": { "type": "integer", "format": "int64", "example": 2 } }
+      },
+      "PathRequest": {
+        "type": "object",
+        "required": ["path"],
+        "properties": { "path": { "type": "string", "description": "Stored file path returned when uploaded" } }
+      },
+      "ShareCollectionRequest": {
+        "type": "object",
+        "required": ["identifier", "access"],
+        "properties": {
+          "identifier": { "type": "string", "description": "Username or email of the recipient" },
+          "access": { "type": "string", "enum": ["reader", "editor"], "example": "reader" }
+        }
+      },
+      "AdminCreateUserRequest": {
+        "type": "object",
+        "required": ["username", "password"],
+        "properties": {
+          "username": { "type": "string" },
+          "email": { "type": "string", "format": "email" },
+          "displayName": { "type": "string" },
+          "password": { "type": "string", "format": "password" },
+          "role": { "type": "string", "enum": ["reader", "editor", "administrator"] }
+        }
+      },
+      "AdminUpdateUserRequest": {
+        "type": "object",
+        "properties": {
+          "role": { "type": "string", "enum": ["reader", "editor", "administrator"] },
+          "isActive": { "type": "boolean" }
+        }
+      },
+      "SMTPUpdateRequest": {
+        "type": "object",
+        "properties": {
+          "host": { "type": "string" },
+          "port": { "type": "integer", "example": 587 },
+          "username": { "type": "string" },
+          "password": { "type": "string", "format": "password" },
+          "from": { "type": "string", "format": "email" },
+          "useTls": { "type": "boolean" }
+        }
+      },
+      "SMTPTestRequest": {
+        "type": "object",
+        "required": ["to"],
+        "properties": { "to": { "type": "string", "format": "email" } }
+      },
+      "OIDCUpdateRequest": {
+        "type": "object",
+        "properties": {
+          "enabled": { "type": "boolean" },
+          "issuerUrl": { "type": "string" },
+          "clientId": { "type": "string" },
+          "clientSecret": { "type": "string", "format": "password" },
+          "redirectUrl": { "type": "string" },
+          "adminGroup": { "type": "string" },
+          "providerName": { "type": "string" },
+          "allowRegistration": { "type": "boolean" }
+        }
+      }
+    },
+    "parameters": {
+      "IdPath": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "integer", "format": "int64" }
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "Authentication required or session invalid",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "Forbidden": {
+        "description": "Missing/invalid CSRF token or insufficient permissions",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "BadRequest": {
+        "description": "Invalid request",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "NotFound": {
+        "description": "Resource not found",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      }
+    }
+  },
+  "security": [{ "sessionCookie": [] }],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": ["System"],
+        "summary": "Health check",
+        "security": [],
+        "responses": { "200": { "description": "Service status" } }
+      }
+    },
+    "/version": {
+      "get": {
+        "tags": ["System"],
+        "summary": "Build version",
+        "security": [],
+        "responses": { "200": { "description": "Version string" } }
+      }
+    },
+    "/auth/csrf": {
+      "get": {
+        "tags": ["Auth"],
+        "summary": "Get a CSRF token",
+        "description": "Sets the ch_csrf cookie and returns the token used for the X-CSRF-Token header.",
+        "security": [],
+        "responses": { "200": { "description": "CSRF token" } }
+      }
+    },
+    "/auth/providers": {
+      "get": {
+        "tags": ["Auth"],
+        "summary": "List enabled auth providers",
+        "security": [],
+        "responses": { "200": { "description": "Available providers" } }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Log in with username/email and password",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "Logged in; sets the session cookie" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/auth/oidc/login": {
+      "get": {
+        "tags": ["Auth"],
+        "summary": "Begin OIDC login (redirect)",
+        "security": [],
+        "responses": { "302": { "description": "Redirect to the identity provider" } }
+      }
+    },
+    "/auth/oidc/callback": {
+      "get": {
+        "tags": ["Auth"],
+        "summary": "OIDC callback",
+        "security": [],
+        "parameters": [
+          { "name": "code", "in": "query", "schema": { "type": "string" } },
+          { "name": "state", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": { "302": { "description": "Redirect back into the app" } }
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Log out the current session",
+        "responses": { "200": { "description": "Logged out" }, "401": { "$ref": "#/components/responses/Unauthorized" } }
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "tags": ["Profile"],
+        "summary": "Get the current user",
+        "responses": { "200": { "description": "Current user" }, "401": { "$ref": "#/components/responses/Unauthorized" } }
+      },
+      "patch": {
+        "tags": ["Profile"],
+        "summary": "Update profile (display name, email)",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UpdateProfileRequest" } } }
+        },
+        "responses": { "200": { "description": "Updated user" }, "400": { "$ref": "#/components/responses/BadRequest" } }
+      },
+      "delete": {
+        "tags": ["Profile"],
+        "summary": "Confirm and delete the current account",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ConfirmDeletionRequest" } } }
+        },
+        "responses": { "200": { "description": "Account deleted" }, "400": { "$ref": "#/components/responses/BadRequest" } }
+      }
+    },
+    "/auth/me/avatar": {
+      "post": {
+        "tags": ["Profile"],
+        "summary": "Upload a profile picture",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": { "file": { "type": "string", "format": "binary" } }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "Updated user" }, "400": { "$ref": "#/components/responses/BadRequest" } }
+      }
+    },
+    "/auth/me/password": {
+      "post": {
+        "tags": ["Profile"],
+        "summary": "Change password",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ChangePasswordRequest" } } }
+        },
+        "responses": { "200": { "description": "Password changed" }, "400": { "$ref": "#/components/responses/BadRequest" } }
+      }
+    },
+    "/auth/me/preferences": {
+      "get": {
+        "tags": ["Profile"],
+        "summary": "Get user preferences",
+        "responses": { "200": { "description": "Preferences", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Preferences" } } } } }
+      },
+      "patch": {
+        "tags": ["Profile"],
+        "summary": "Update user preferences",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Preferences" } } }
+        },
+        "responses": { "200": { "description": "Updated preferences" } }
+      }
+    },
+    "/auth/me/sessions": {
+      "get": {
+        "tags": ["Profile"],
+        "summary": "List active sessions",
+        "responses": { "200": { "description": "Sessions" } }
+      },
+      "delete": {
+        "tags": ["Profile"],
+        "summary": "Revoke all other sessions",
+        "responses": { "200": { "description": "Revoked" } }
+      }
+    },
+    "/auth/me/sessions/{id}": {
+      "delete": {
+        "tags": ["Profile"],
+        "summary": "Revoke a specific session",
+        "parameters": [{ "$ref": "#/components/parameters/IdPath" }],
+        "responses": { "200": { "description": "Revoked" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/auth/me/deletion-code": {
+      "post": {
+        "tags": ["Profile"],
+        "summary": "Email an account-deletion confirmation code",
+        "responses": { "200": { "description": "Code sent" } }
+      }
+    },
+    "/notifications": {
+      "get": {
+        "tags": ["Notifications"],
+        "summary": "List notifications",
+        "parameters": [{ "name": "limit", "in": "query", "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "Notifications" } }
+      },
+      "delete": {
+        "tags": ["Notifications"],
+        "summary": "Delete all notifications",
+        "responses": { "200": { "description": "Deleted" } }
+      }
+    },
+    "/notifications/unread-count": {
+      "get": {
+        "tags": ["Notifications"],
+        "summary": "Unread notification count",
+        "responses": { "200": { "description": "Count" } }
+      }
+    },
+    "/notifications/read-all": {
+      "post": { "tags": ["Notifications"], "summary": "Mark all as read", "responses": { "200": { "description": "OK" } } }
+    },
+    "/notifications/unread-all": {
+      "post": { "tags": ["Notifications"], "summary": "Mark all as unread", "responses": { "200": { "description": "OK" } } }
+    },
+    "/notifications/{id}/read": {
+      "post": {
+        "tags": ["Notifications"],
+        "summary": "Mark a notification as read",
+        "parameters": [{ "$ref": "#/components/parameters/IdPath" }],
+        "responses": { "200": { "description": "OK" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/notifications/{id}/unread": {
+      "post": {
+        "tags": ["Notifications"],
+        "summary": "Mark a notification as unread",
+        "parameters": [{ "$ref": "#/components/parameters/IdPath" }],
+        "responses": { "200": { "description": "OK" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/notifications/{id}": {
+      "delete": {
+        "tags": ["Notifications"],
+        "summary": "Delete a notification",
+        "parameters": [{ "$ref": "#/components/parameters/IdPath" }],
+        "responses": { "200": { "description": "Deleted" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/collections": {
+      "get": { "tags": ["Collections"], "summary": "List collections", "responses": { "200": { "description": "Collections" } } },
+      "post": {
+        "tags": ["Collections"],
+        "summary": "Create a collection",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CollectionInput" } } } },
+        "responses": { "201": { "description": "Created" }, "403": { "$ref": "#/components/responses/Forbidden" } }
+      }
+    },
+    "/collections/{id}": {
+      "get": {
+        "tags": ["Collections"],
+        "summary": "Get a collection",
+        "parameters": [{ "$ref": "#/components/parameters/IdPath" }],
+        "responses": { "200": { "description": "Collection" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      },
+      "patch": {
+        "tags": ["Collections"],
+        "summary": "Update a collection",
+        "parameters": [{ "$ref": "#/components/parameters/IdPath" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CollectionInput" } } } },
+        "responses": { "200": { "description": "Updated" } }
+      },
+      "delete": {
+        "tags": ["Collections"],
+        "summary": "Delete a collection",
+        "parameters": [{ "$ref": "#/components/parameters/IdPath" }],
+        "responses": { "200": { "description": "Deleted" } }
+      }
+    },
+    "/collections/{id}/stats": {
+      "get": {
+        "tags": ["Collections"],
+        "summary": "Collection statistics",
+        "parameters": [{ "$ref": "#/components/parameters/IdPath" }],
+        "responses": { "200": { "description": "Stats" } }
+      }
+    },
+    "/collections/{id}/items": {
+      "get": {
+        "tags": ["Collections"],
+        "summary": "List items in a collection",
+        "parameters": [{ "$ref": "#/components/parameters/IdPath" }],
+        "responses": { "200": { "description": "Items" } }
+      },
+      "post": {
+        "tags": ["Collections"],
+        "summary": "Create an item in a collection",
+        "parameters": [{ "$ref": "#/components/parameters/IdPath" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ItemInput" } } } },
+        "responses": { "201": { "description": "Created" } }
+      }
+    },
+    "/collections/{id}/shares": {
+      "get": {
+        "tags": ["Collections"],
+        "summary": "List collection shares",
+        "parameters": [{ "$ref": "#/components/parameters/IdPath" }],
+        "responses": { "200": { "description": "Shares" } }
+      },
+      "post": {
+        "tags": ["Collections"],
+        "summary": "Share a collection with a user",
+        "parameters": [{ "$ref": "#/components/parameters/IdPath" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ShareCollectionRequest" } } } },
+        "responses": { "200": { "description": "Shared" } }
+      }
+    },
+    "/collections/{id}/shares/{userId}": {
+      "delete": {
+        "tags": ["Collections"],
+        "summary": "Remove a collection share",
+        "parameters": [
+          { "$ref": "#/components/parameters/IdPath" },
+          { "name": "userId", "in": "path", "required": true, "schema": { "type": "integer", "format": "int64" } }
+        ],
+        "responses": { "200": { "description": "Unshared" } }
+      }
+    },
+    "/items": {
+      "get": { "tags": ["Items"], "summary": "List all items the user can access", "responses": { "200": { "description": "Items" } } }
+    },
+    "/items/{id}": {
+      "get": {
+        "tags": ["Items"],
+        "summary": "Get an item",
+        "parameters": [{ "$ref": "#/components/parameters/IdPath" }],
+        "responses": { "200": { "description": "Item" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      },
+      "patch": {
+        "tags": ["Items"],
+        "summary": "Update an item",
+        "parameters": [{ "$ref": "#/components/parameters/IdPath" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ItemInput" } } } },
+        "responses": { "200": { "description": "Updated" } }
+      },
+      "delete": {
+        "tags": ["Items"],
+        "summary": "Delete an item",
+        "parameters": [{ "$ref": "#/components/parameters/IdPath" }],
+        "responses": { "200": { "description": "Deleted" } }
+      }
+    },
+    "/items/{id}/move": {
+      "post": {
+        "tags": ["Items"],
+        "summary": "Move an item to another collection",
+        "parameters": [{ "$ref": "#/components/parameters/IdPath" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MoveItemRequest" } } } },
+        "responses": { "200": { "description": "Moved" } }
+      }
+    },
+    "/items/{id}/image": {
+      "post": {
+        "tags": ["Items"],
+        "summary": "Upload an item image",
+        "parameters": [{ "$ref": "#/components/parameters/IdPath" }],
+        "requestBody": {
+          "required": true,
+          "content": { "multipart/form-data": { "schema": { "type": "object", "properties": { "file": { "type": "string", "format": "binary" } } } } }
+        },
+        "responses": { "200": { "description": "Updated item" } }
+      },
+      "delete": {
+        "tags": ["Items"],
+        "summary": "Remove an item image",
+        "parameters": [{ "$ref": "#/components/parameters/IdPath" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PathRequest" } } } },
+        "responses": { "200": { "description": "Updated item" } }
+      }
+    },
+    "/items/{id}/cover": {
+      "post": {
+        "tags": ["Items"],
+        "summary": "Set an item's cover image",
+        "parameters": [{ "$ref": "#/components/parameters/IdPath" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PathRequest" } } } },
+        "responses": { "200": { "description": "Updated item" } }
+      }
+    },
+    "/items/{id}/attachments": {
+      "post": {
+        "tags": ["Items"],
+        "summary": "Upload an item attachment",
+        "parameters": [{ "$ref": "#/components/parameters/IdPath" }],
+        "requestBody": {
+          "required": true,
+          "content": { "multipart/form-data": { "schema": { "type": "object", "properties": { "file": { "type": "string", "format": "binary" } } } } }
+        },
+        "responses": { "200": { "description": "Updated item" } }
+      },
+      "delete": {
+        "tags": ["Items"],
+        "summary": "Delete an item attachment",
+        "parameters": [{ "$ref": "#/components/parameters/IdPath" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PathRequest" } } } },
+        "responses": { "200": { "description": "Updated item" } }
+      }
+    },
+    "/items/{id}/stats": {
+      "get": {
+        "tags": ["Items"],
+        "summary": "Item statistics",
+        "parameters": [{ "$ref": "#/components/parameters/IdPath" }],
+        "responses": { "200": { "description": "Stats" } }
+      }
+    },
+    "/items/{id}/entries": {
+      "get": {
+        "tags": ["Items"],
+        "summary": "List entries for an item",
+        "parameters": [{ "$ref": "#/components/parameters/IdPath" }],
+        "responses": { "200": { "description": "Entries" } }
+      },
+      "post": {
+        "tags": ["Items"],
+        "summary": "Create an entry for an item",
+        "parameters": [{ "$ref": "#/components/parameters/IdPath" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EntryInput" } } } },
+        "responses": { "201": { "description": "Created" } }
+      }
+    },
+    "/entries/{id}": {
+      "patch": {
+        "tags": ["Entries"],
+        "summary": "Update an entry",
+        "parameters": [{ "$ref": "#/components/parameters/IdPath" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EntryInput" } } } },
+        "responses": { "200": { "description": "Updated" } }
+      },
+      "delete": {
+        "tags": ["Entries"],
+        "summary": "Delete an entry",
+        "parameters": [{ "$ref": "#/components/parameters/IdPath" }],
+        "responses": { "200": { "description": "Deleted" } }
+      }
+    },
+    "/entries/{id}/attachments": {
+      "post": {
+        "tags": ["Entries"],
+        "summary": "Upload an entry attachment",
+        "parameters": [{ "$ref": "#/components/parameters/IdPath" }],
+        "requestBody": {
+          "required": true,
+          "content": { "multipart/form-data": { "schema": { "type": "object", "properties": { "file": { "type": "string", "format": "binary" } } } } }
+        },
+        "responses": { "200": { "description": "Updated entry" } }
+      },
+      "delete": {
+        "tags": ["Entries"],
+        "summary": "Delete an entry attachment",
+        "parameters": [{ "$ref": "#/components/parameters/IdPath" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PathRequest" } } } },
+        "responses": { "200": { "description": "Updated entry" } }
+      }
+    },
+    "/search": {
+      "get": {
+        "tags": ["Search & Stats"],
+        "summary": "Search collections and items",
+        "parameters": [{ "name": "q", "in": "query", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Search results" } }
+      }
+    },
+    "/stats/portfolio": {
+      "get": { "tags": ["Search & Stats"], "summary": "Portfolio-wide statistics", "responses": { "200": { "description": "Portfolio stats" } } }
+    },
+    "/stats/recent-items": {
+      "get": {
+        "tags": ["Search & Stats"],
+        "summary": "Recently modified items",
+        "parameters": [{ "name": "limit", "in": "query", "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "Recent items" } }
+      }
+    },
+    "/admin/users": {
+      "get": { "tags": ["Admin"], "summary": "List users", "responses": { "200": { "description": "Users" }, "403": { "$ref": "#/components/responses/Forbidden" } } },
+      "post": {
+        "tags": ["Admin"],
+        "summary": "Create a user",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AdminCreateUserRequest" } } } },
+        "responses": { "201": { "description": "Created" }, "403": { "$ref": "#/components/responses/Forbidden" } }
+      }
+    },
+    "/admin/users/{id}": {
+      "patch": {
+        "tags": ["Admin"],
+        "summary": "Update a user's role/status",
+        "parameters": [{ "$ref": "#/components/parameters/IdPath" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AdminUpdateUserRequest" } } } },
+        "responses": { "200": { "description": "Updated" } }
+      },
+      "delete": {
+        "tags": ["Admin"],
+        "summary": "Delete a user",
+        "parameters": [{ "$ref": "#/components/parameters/IdPath" }],
+        "responses": { "200": { "description": "Deleted" } }
+      }
+    },
+    "/admin/settings/smtp": {
+      "get": { "tags": ["Admin"], "summary": "Get SMTP settings", "responses": { "200": { "description": "SMTP settings" } } },
+      "put": {
+        "tags": ["Admin"],
+        "summary": "Update SMTP settings",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SMTPUpdateRequest" } } } },
+        "responses": { "200": { "description": "Updated" } }
+      }
+    },
+    "/admin/settings/smtp/test": {
+      "post": {
+        "tags": ["Admin"],
+        "summary": "Send a test email",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SMTPTestRequest" } } } },
+        "responses": { "200": { "description": "Sent" } }
+      }
+    },
+    "/admin/settings/oidc": {
+      "get": { "tags": ["Admin"], "summary": "Get OIDC settings", "responses": { "200": { "description": "OIDC settings" } } },
+      "put": {
+        "tags": ["Admin"],
+        "summary": "Update OIDC settings",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OIDCUpdateRequest" } } } },
+        "responses": { "200": { "description": "Updated" } }
+      }
+    }
+  }
+}

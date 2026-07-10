@@ -504,6 +504,8 @@
 	}
 </script>
 
+<svelte:head><title>{item ? `${item.name} · Capital Hub` : 'Item · Capital Hub'}</title></svelte:head>
+
 <section class="mx-auto max-w-4xl space-y-6">
 	{#if loading}
 		<p class="text-sm text-slate-500">Loading…</p>

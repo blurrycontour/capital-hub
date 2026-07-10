@@ -98,6 +98,8 @@
 	}
 </script>
 
+<svelte:head><title>Settings · Capital Hub</title></svelte:head>
+
 <section class="mx-auto max-w-3xl space-y-6">
 	<header>
 		<h1 class="text-2xl font-bold">Settings</h1>

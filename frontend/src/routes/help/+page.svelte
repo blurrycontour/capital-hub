@@ -64,6 +64,8 @@
 	];
 </script>
 
+<svelte:head><title>Help · Capital Hub</title></svelte:head>
+
 <section class="mx-auto max-w-3xl space-y-10">
 	<header class="space-y-1">
 		<h1 class="text-2xl font-bold">Help</h1>

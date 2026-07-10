@@ -135,6 +135,8 @@
 	}
 </script>
 
+<svelte:head><title>Items · Capital Hub</title></svelte:head>
+
 <section class="mx-auto max-w-5xl space-y-6">
 	<header class="flex flex-wrap items-center justify-between gap-3">
 		<div class="flex items-center gap-2.5">

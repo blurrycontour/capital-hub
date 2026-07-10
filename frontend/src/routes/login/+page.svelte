@@ -52,6 +52,8 @@
 	}
 </script>
 
+<svelte:head><title>Sign in · Capital Hub</title></svelte:head>
+
 <section class="relative grid min-h-screen w-full md:grid-cols-2">
 	<!-- Theme toggle (always visible on login screen) -->
 	<div class="absolute right-4 top-4 z-10">

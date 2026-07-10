@@ -225,6 +225,8 @@
 	const oidcEnvSet = $derived(new Set(oidc.envFields));
 </script>
 
+<svelte:head><title>Administration · Capital Hub</title></svelte:head>
+
 <section class="mx-auto max-w-5xl space-y-6">
 	<header>
 		<div class="flex flex-wrap items-center justify-between gap-2">

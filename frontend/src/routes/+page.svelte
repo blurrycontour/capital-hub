@@ -92,6 +92,8 @@
 	});
 </script>
 
+<svelte:head><title>Dashboard · Capital Hub</title></svelte:head>
+
 <section class="mx-auto max-w-5xl space-y-6">
 	<header class="flex flex-wrap items-end justify-between gap-2">
 		<div>

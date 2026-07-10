@@ -273,6 +273,8 @@
 	}
 </script>
 
+<svelte:head><title>{collection ? `${collection.name} · Capital Hub` : 'Collection · Capital Hub'}</title></svelte:head>
+
 <section class="mx-auto max-w-5xl space-y-6">
 	{#if error}
 		<div

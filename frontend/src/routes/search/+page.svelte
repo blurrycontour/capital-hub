@@ -108,6 +108,8 @@
 	);
 </script>
 
+<svelte:head><title>Search · Capital Hub</title></svelte:head>
+
 <section class="mx-auto max-w-4xl space-y-4">
 	<h1 class="text-2xl font-bold">Search</h1>
 	<div class="relative">

@@ -16,10 +16,13 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
-	"github.com/aditya/capital-hub/internal/auth"
+	authkit "github.com/blurrycontour/go-authkit/auth"
+	sqlitestore "github.com/blurrycontour/go-authkit/store/sqlite"
+
 	"github.com/aditya/capital-hub/internal/config"
 	"github.com/aditya/capital-hub/internal/inventory"
 	"github.com/aditya/capital-hub/internal/notify"
+	"github.com/aditya/capital-hub/internal/userprefs"
 	"github.com/aditya/capital-hub/internal/web"
 )
 
@@ -31,7 +34,8 @@ type Server struct {
 	cfg       *config.Config
 	db        *sql.DB
 	logger    *slog.Logger
-	auth      *auth.Service
+	auth      *authkit.Service
+	prefs     *userprefs.Service
 	notify    *notify.Service
 	inventory *inventory.Service
 	router    chi.Router
@@ -47,7 +51,8 @@ func New(cfg *config.Config, db *sql.DB, logger *slog.Logger) (*Server, error) {
 		cfg:            cfg,
 		db:             db,
 		logger:         logger,
-		auth:           auth.NewService(db, cfg),
+		auth:           authkit.NewService(sqlitestore.New(db), authKitConfig(cfg)),
+		prefs:          userprefs.NewService(db),
 		notify:         notify.NewService(db),
 		inventory:      inventory.NewService(db),
 		trustedProxies: parseTrustedProxies(cfg.TrustedProxies, logger),
@@ -56,6 +61,17 @@ func New(cfg *config.Config, db *sql.DB, logger *slog.Logger) (*Server, error) {
 		return nil, err
 	}
 	return s, nil
+}
+
+// authKitConfig maps Capital Hub configuration onto go-authkit's session and
+// role settings.
+func authKitConfig(cfg *config.Config) authkit.Config {
+	return authkit.Config{
+		SessionCookieName: cfg.SessionCookieName,
+		SessionTTL:        time.Duration(cfg.SessionTTLHours) * time.Hour,
+		Roles:             authkit.DefaultRoles,
+		DefaultRole:       authkit.RoleEditor,
+	}
 }
 
 // parseTrustedProxies turns CIDR/IP strings into networks. Bare IPs become
@@ -371,13 +387,13 @@ func (s *Server) requireCSRF(next http.Handler) http.Handler {
 	})
 }
 
-func withUser(r *http.Request, user *auth.User) context.Context {
+func withUser(r *http.Request, user *authkit.User) context.Context {
 	return context.WithValue(r.Context(), ctxUserKey, user)
 }
 
-func userFromContext(r *http.Request) *auth.User {
+func userFromContext(r *http.Request) *authkit.User {
 	v := r.Context().Value(ctxUserKey)
-	if user, ok := v.(*auth.User); ok {
+	if user, ok := v.(*authkit.User); ok {
 		return user
 	}
 	return nil

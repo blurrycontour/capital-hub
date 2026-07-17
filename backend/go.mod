@@ -3,11 +3,11 @@ module github.com/aditya/capital-hub
 go 1.26
 
 require (
+	github.com/blurrycontour/go-authkit v0.0.0-20260717095002-528730d9d0f3
 	github.com/caarlos0/env/v11 v11.4.1
-	github.com/coreos/go-oidc/v3 v3.19.0
+	github.com/coreos/go-oidc/v3 v3.20.0
 	github.com/go-chi/chi/v5 v5.3.0
 	github.com/pressly/goose/v3 v3.27.1
-	golang.org/x/crypto v0.50.0
 	golang.org/x/oauth2 v0.36.0
 	modernc.org/sqlite v1.53.0
 )
@@ -22,6 +22,7 @@ require (
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/sethvargo/go-retry v0.3.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
+	golang.org/x/crypto v0.50.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.44.0 // indirect
 	modernc.org/libc v1.73.4 // indirect

@@ -106,6 +106,7 @@ const (
 type oidcClaims struct {
 	Subject           string   `json:"sub"`
 	Email             string   `json:"email"`
+	EmailVerified     bool     `json:"email_verified"`
 	PreferredUsername string   `json:"preferred_username"`
 	Name              string   `json:"name"`
 	Groups            []string `json:"groups"`
@@ -247,6 +248,7 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 		if err := userInfo.Claims(&infoClaims); err == nil {
 			if claims.Email == "" {
 				claims.Email = infoClaims.Email
+				claims.EmailVerified = infoClaims.EmailVerified
 			}
 			if claims.Name == "" {
 				claims.Name = infoClaims.Name
@@ -281,6 +283,7 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 		claims.Name,
 		makeAdmin,
 		oidcCfg.AllowRegistration,
+		claims.EmailVerified,
 	)
 	if err != nil {
 		s.logger.ErrorContext(r.Context(), "resolve oidc user failed", "error", err)

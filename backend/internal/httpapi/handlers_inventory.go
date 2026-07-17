@@ -27,7 +27,7 @@ const maxUploadBytes = 10 << 20
 // notification kind. It defaults to true when the preference cannot be loaded
 // so notifications are not silently dropped on transient errors.
 func (s *Server) wantsNotification(ctx context.Context, userID int64, kind string) bool {
-	prefs, err := s.auth.GetPreferences(ctx, userID)
+	prefs, err := s.prefs.Get(ctx, userID)
 	if err != nil {
 		return true
 	}
@@ -886,7 +886,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handlePortfolioStats(w http.ResponseWriter, r *http.Request) {
 	user := userFromContext(r)
-	includeShared, err := s.auth.StatsIncludeShared(r.Context(), user.ID)
+	includeShared, err := s.prefs.StatsIncludeShared(r.Context(), user.ID)
 	if err != nil {
 		s.writeInventoryError(w, r, err, "portfolio stats")
 		return
@@ -901,7 +901,7 @@ func (s *Server) handlePortfolioStats(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleRecentItems(w http.ResponseWriter, r *http.Request) {
 	user := userFromContext(r)
-	includeShared, err := s.auth.StatsIncludeShared(r.Context(), user.ID)
+	includeShared, err := s.prefs.StatsIncludeShared(r.Context(), user.ID)
 	if err != nil {
 		s.writeInventoryError(w, r, err, "recent items")
 		return
@@ -925,7 +925,7 @@ func (s *Server) handleRecentItems(w http.ResponseWriter, r *http.Request) {
 // have coordinates are returned so the dashboard map can plot them.
 func (s *Server) handleMapItems(w http.ResponseWriter, r *http.Request) {
 	user := userFromContext(r)
-	includeShared, err := s.auth.StatsIncludeShared(r.Context(), user.ID)
+	includeShared, err := s.prefs.StatsIncludeShared(r.Context(), user.ID)
 	if err != nil {
 		s.writeInventoryError(w, r, err, "map items")
 		return

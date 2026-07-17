@@ -12,7 +12,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/aditya/capital-hub/internal/auth"
+	authkit "github.com/blurrycontour/go-authkit/auth"
+	sqlitestore "github.com/blurrycontour/go-authkit/store/sqlite"
+
 	"github.com/aditya/capital-hub/internal/config"
 	"github.com/aditya/capital-hub/internal/database"
 	"github.com/aditya/capital-hub/internal/httpapi"
@@ -60,8 +62,12 @@ func run() error {
 		return err
 	}
 
-	authSvc := auth.NewService(db, cfg)
-	if err := authSvc.EnsureBootstrapAdmin(ctx); err != nil {
+	authSvc := authkit.NewService(sqlitestore.New(db), authkit.Config{})
+	if err := authSvc.EnsureBootstrapAdmin(ctx, authkit.BootstrapAdmin{
+		Username: cfg.BootstrapAdminUsername,
+		Email:    cfg.BootstrapAdminEmail,
+		Password: cfg.BootstrapAdminPassword,
+	}); err != nil {
 		return err
 	}
 	logger.Info("database ready", "path", cfg.DBPath())

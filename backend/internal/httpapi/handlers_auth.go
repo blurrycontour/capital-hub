@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aditya/capital-hub/internal/auth"
+	"github.com/aditya/capital-hub/internal/userprefs"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -141,7 +141,7 @@ func (s *Server) handleGetPreferences(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusUnauthorized, "authentication required")
 		return
 	}
-	prefs, err := s.auth.GetPreferences(r.Context(), user.ID)
+	prefs, err := s.prefs.Get(r.Context(), user.ID)
 	if err != nil {
 		s.logger.ErrorContext(r.Context(), "load preferences", "error", err)
 		writeAPIError(w, http.StatusInternalServerError, "failed to load preferences")
@@ -156,17 +156,17 @@ func (s *Server) handleUpdatePreferences(w http.ResponseWriter, r *http.Request)
 		writeAPIError(w, http.StatusUnauthorized, "authentication required")
 		return
 	}
-	var req auth.Preferences
+	var req userprefs.Preferences
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeAPIError(w, http.StatusBadRequest, "invalid json payload")
 		return
 	}
-	if err := s.auth.SetPreferences(r.Context(), user.ID, req); err != nil {
+	if err := s.prefs.Set(r.Context(), user.ID, req); err != nil {
 		s.logger.ErrorContext(r.Context(), "update preferences", "error", err)
 		writeAPIError(w, http.StatusInternalServerError, "failed to update preferences")
 		return
 	}
-	prefs, err := s.auth.GetPreferences(r.Context(), user.ID)
+	prefs, err := s.prefs.Get(r.Context(), user.ID)
 	if err != nil {
 		s.logger.ErrorContext(r.Context(), "load preferences", "error", err)
 		writeAPIError(w, http.StatusInternalServerError, "failed to load preferences")

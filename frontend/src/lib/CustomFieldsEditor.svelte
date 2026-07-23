@@ -25,7 +25,7 @@
 			<textarea
 				bind:value={field.value}
 				placeholder="Enter field value..."
-				rows="1"
+				rows="3"
 				class="flex-1 resize-y rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-800"
 			></textarea>
 			<button

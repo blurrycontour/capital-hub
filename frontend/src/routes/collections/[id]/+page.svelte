@@ -743,7 +743,7 @@
 				</select>
 				<button
 					type="button"
-					class="inline-flex items-center justify-center gap-1.5 rounded-md bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-50"
+					class="inline-flex items-center justify-center gap-1.5 rounded-md bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-60"
 					disabled={sharing || !shareIdentifier.trim()}
 					onclick={addShare}
 				>

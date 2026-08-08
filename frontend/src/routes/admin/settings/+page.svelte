@@ -276,23 +276,23 @@
 			<div class="grid gap-4 md:grid-cols-2">
 				<label class="space-y-1">
 					<span class="text-sm font-medium">Host</span>
-					<input bind:value={smtp.host} class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 dark:border-slate-700 dark:bg-slate-900" />
+					<input bind:value={smtp.host} class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-sky-500 dark:border-slate-700 dark:bg-slate-900" />
 				</label>
 				<label class="space-y-1">
 					<span class="text-sm font-medium">Port</span>
-					<input type="number" bind:value={smtp.port} class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 dark:border-slate-700 dark:bg-slate-900" />
+					<input type="number" bind:value={smtp.port} class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-sky-500 dark:border-slate-700 dark:bg-slate-900" />
 				</label>
 				<label class="space-y-1">
 					<span class="text-sm font-medium">Username</span>
-					<input bind:value={smtp.username} class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 dark:border-slate-700 dark:bg-slate-900" />
+					<input bind:value={smtp.username} class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-sky-500 dark:border-slate-700 dark:bg-slate-900" />
 				</label>
 				<label class="space-y-1">
 					<span class="text-sm font-medium">Password {smtp.passwordSet ? '(already set)' : ''}</span>
-					<input type="password" bind:value={smtpPassword} placeholder="Leave blank to keep current" class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 dark:border-slate-700 dark:bg-slate-900" />
+					<input type="password" bind:value={smtpPassword} placeholder="Leave blank to keep current" class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-sky-500 dark:border-slate-700 dark:bg-slate-900" />
 				</label>
 				<label class="space-y-1">
 					<span class="text-sm font-medium">From email</span>
-					<input bind:value={smtp.from} class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 dark:border-slate-700 dark:bg-slate-900" />
+					<input bind:value={smtp.from} class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-sky-500 dark:border-slate-700 dark:bg-slate-900" />
 				</label>
 				<label class="flex items-center gap-2 self-end pb-2 text-sm">
 					<input type="checkbox" bind:checked={smtp.useTls} /> Use TLS
@@ -304,7 +304,7 @@
 					type="button"
 					onclick={() => void saveSMTP()}
 					disabled={savingSmtp}
-					class="rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-60"
+					class="rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
 				>
 					{savingSmtp ? 'Saving...' : 'Save SMTP settings'}
 				</button>
@@ -313,7 +313,7 @@
 			<div class="space-y-2 rounded-md bg-slate-50 p-4 dark:bg-slate-800/40">
 				<div class="text-sm font-medium">Send a test email</div>
 				<div class="flex flex-wrap gap-2">
-					<input bind:value={testTo} placeholder="recipient@example.com" class="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 dark:border-slate-700 dark:bg-slate-900" />
+					<input bind:value={testTo} placeholder="recipient@example.com" class="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-sky-500 dark:border-slate-700 dark:bg-slate-900" />
 					<button
 						type="button"
 						onclick={() => void runSMTPTest()}
@@ -359,7 +359,7 @@
 						Provider name
 						{#if oidcEnvSet.has('providerName')}<span class="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">env</span>{/if}
 					</span>
-					<input bind:value={oidc.providerName} disabled={oidcEnvSet.has('providerName')} placeholder="e.g. Authelia" class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 disabled:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:disabled:bg-slate-800" />
+					<input bind:value={oidc.providerName} disabled={oidcEnvSet.has('providerName')} placeholder="e.g. Authelia" class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-sky-500 disabled:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:disabled:bg-slate-800" />
 					<p class="text-xs text-slate-500">Shown on the login button: "Sign in with …"</p>
 				</label>
 				<label class="space-y-1 {oidcEnvSet.has('issuerUrl') ? 'opacity-60' : ''}">
@@ -367,28 +367,28 @@
 						Issuer URL
 						{#if oidcEnvSet.has('issuerUrl')}<span class="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">env</span>{/if}
 					</span>
-					<input bind:value={oidc.issuerUrl} disabled={oidcEnvSet.has('issuerUrl')} placeholder="https://auth.example.com" class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 disabled:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:disabled:bg-slate-800" />
+					<input bind:value={oidc.issuerUrl} disabled={oidcEnvSet.has('issuerUrl')} placeholder="https://auth.example.com" class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-sky-500 disabled:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:disabled:bg-slate-800" />
 				</label>
 				<label class="space-y-1 {oidcEnvSet.has('clientId') ? 'opacity-60' : ''}">
 					<span class="text-sm font-medium">
 						Client ID
 						{#if oidcEnvSet.has('clientId')}<span class="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">env</span>{/if}
 					</span>
-					<input bind:value={oidc.clientId} disabled={oidcEnvSet.has('clientId')} class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 disabled:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:disabled:bg-slate-800" />
+					<input bind:value={oidc.clientId} disabled={oidcEnvSet.has('clientId')} class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-sky-500 disabled:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:disabled:bg-slate-800" />
 				</label>
 				<label class="space-y-1 {oidcEnvSet.has('clientSecret') ? 'opacity-60' : ''}">
 					<span class="text-sm font-medium">
 						Client secret {oidc.clientSecretSet ? '(already set)' : ''}
 						{#if oidcEnvSet.has('clientSecret')}<span class="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">env</span>{/if}
 					</span>
-					<input type="password" bind:value={oidcClientSecret} disabled={oidcEnvSet.has('clientSecret')} placeholder="Leave blank to keep current" class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 disabled:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:disabled:bg-slate-800" />
+					<input type="password" bind:value={oidcClientSecret} disabled={oidcEnvSet.has('clientSecret')} placeholder="Leave blank to keep current" class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-sky-500 disabled:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:disabled:bg-slate-800" />
 				</label>
 				<label class="space-y-1 {oidcEnvSet.has('redirectUrl') ? 'opacity-60' : ''}">
 					<span class="text-sm font-medium">
 						Redirect URI
 						{#if oidcEnvSet.has('redirectUrl')}<span class="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">env</span>{/if}
 					</span>
-					<input bind:value={oidc.redirectUrl} disabled={oidcEnvSet.has('redirectUrl')} placeholder="https://app.example.com/api/v1/auth/oidc/callback" class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 disabled:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:disabled:bg-slate-800" />
+					<input bind:value={oidc.redirectUrl} disabled={oidcEnvSet.has('redirectUrl')} placeholder="https://app.example.com/api/v1/auth/oidc/callback" class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-sky-500 disabled:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:disabled:bg-slate-800" />
 					<p class="text-xs text-slate-500">Must end with <code>/api/v1/auth/oidc/callback</code></p>
 				</label>
 				<label class="space-y-1 {oidcEnvSet.has('adminGroup') ? 'opacity-60' : ''}">
@@ -396,7 +396,7 @@
 						Admin group (optional)
 						{#if oidcEnvSet.has('adminGroup')}<span class="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">env</span>{/if}
 					</span>
-					<input bind:value={oidc.adminGroup} disabled={oidcEnvSet.has('adminGroup')} placeholder="admins" class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 disabled:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:disabled:bg-slate-800" />
+					<input bind:value={oidc.adminGroup} disabled={oidcEnvSet.has('adminGroup')} placeholder="admins" class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-sky-500 disabled:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:disabled:bg-slate-800" />
 					<p class="text-xs text-slate-500">Group claim value that grants administrator role.</p>
 				</label>
 			</div>
@@ -406,7 +406,7 @@
 					type="button"
 					onclick={() => void saveOIDC()}
 					disabled={savingOidc}
-					class="rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-60"
+					class="rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
 				>
 					{savingOidc ? 'Saving...' : 'Save OIDC settings'}
 				</button>
@@ -449,23 +449,23 @@
 					<div class="grid gap-4 md:grid-cols-2">
 						<label class="space-y-1">
 							<span class="text-sm font-medium">Username</span>
-							<input bind:value={newUser.username} required class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 dark:border-slate-700 dark:bg-slate-900" />
+							<input bind:value={newUser.username} required class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-sky-500 dark:border-slate-700 dark:bg-slate-900" />
 						</label>
 						<label class="space-y-1">
 							<span class="text-sm font-medium">Email</span>
-							<input type="email" bind:value={newUser.email} required class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 dark:border-slate-700 dark:bg-slate-900" />
+							<input type="email" bind:value={newUser.email} required class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-sky-500 dark:border-slate-700 dark:bg-slate-900" />
 						</label>
 						<label class="space-y-1">
 							<span class="text-sm font-medium">Display name</span>
-							<input bind:value={newUser.displayName} placeholder="Optional" class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 dark:border-slate-700 dark:bg-slate-900" />
+							<input bind:value={newUser.displayName} placeholder="Optional" class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-sky-500 dark:border-slate-700 dark:bg-slate-900" />
 						</label>
 						<label class="space-y-1">
 							<span class="text-sm font-medium">Password</span>
-							<input type="password" bind:value={newUser.password} required minlength="8" placeholder="At least 8 characters" class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 dark:border-slate-700 dark:bg-slate-900" />
+							<input type="password" bind:value={newUser.password} required minlength="8" placeholder="At least 8 characters" class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-sky-500 dark:border-slate-700 dark:bg-slate-900" />
 						</label>
 						<label class="space-y-1">
 							<span class="text-sm font-medium">Role</span>
-							<select bind:value={newUser.role} class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 dark:border-slate-700 dark:bg-slate-900">
+							<select bind:value={newUser.role} class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-sky-500 dark:border-slate-700 dark:bg-slate-900">
 								<option value="administrator">Administrator</option>
 								<option value="editor">Editor</option>
 								<option value="reader">Reader</option>
@@ -475,7 +475,7 @@
 					<button
 						type="submit"
 						disabled={creatingUser}
-						class="rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-60"
+						class="rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
 					>
 						{creatingUser ? 'Creating...' : 'Create user'}
 					</button>
@@ -524,7 +524,7 @@
 													type="button"
 													onclick={() => void saveUserEdit()}
 													disabled={savingUser}
-													class="rounded bg-sky-600 px-2 py-1 text-xs text-white hover:bg-sky-500 disabled:opacity-60"
+													class="rounded bg-sky-600 px-2 py-1 text-xs text-white hover:bg-sky-700 disabled:opacity-60"
 												>
 													Save
 												</button>

@@ -71,6 +71,36 @@ button:not(:disabled),
 	cursor: pointer;
 }
 
+/* ...and show every disabled control as unavailable. Only some call sites set
+   `disabled:cursor-not-allowed`, so without this the cursor varied by page.
+   A `disabled:cursor-*` utility still wins where a control wants otherwise. */
+button:disabled,
+input:disabled,
+select:disabled,
+textarea:disabled,
+[aria-disabled='true'] {
+	cursor: not-allowed;
+}
+
+/* Scroll without a visible scrollbar, for chrome that must stay a fixed height
+   (the breadcrumb trail) but can overflow on narrow viewports. */
+.ch-no-scrollbar {
+	scrollbar-width: none;
+	-ms-overflow-style: none;
+}
+.ch-no-scrollbar::-webkit-scrollbar {
+	display: none;
+}
+
+/* One focus indicator for every control. Form fields previously mixed the
+   browser default ring with an `outline-none` + border-tint treatment, so the
+   focused field looked different depending on the page. `:focus-visible` keeps
+   it off for pointer interaction. */
+:where(a, button, input, select, textarea, summary, [role='button'], [role='switch']):focus-visible {
+	outline: 2px solid var(--color-sky-500);
+	outline-offset: 2px;
+}
+
 /* Hide scrollbars on mobile devices while keeping scroll functionality. */
 @media (max-width: 767px) {
 	* {

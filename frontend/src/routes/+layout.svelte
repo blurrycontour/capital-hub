@@ -80,6 +80,15 @@
 	const isLoginRoute = $derived($page.url.pathname.startsWith('/login'));
 	const showChrome = $derived(auth.isAuthenticated && !isLoginRoute);
 
+	// A deep trail overflows the breadcrumb bar on narrow screens. Keep it
+	// scrolled to the end so the current page stays visible and the ancestors
+	// scroll out of view instead.
+	let crumbNav = $state<HTMLElement | null>(null);
+	$effect(() => {
+		void breadcrumbs;
+		if (crumbNav) crumbNav.scrollLeft = crumbNav.scrollWidth;
+	});
+
 	onMount(() => {
 		theme = getInitialTheme();
 		applyTheme(theme);
@@ -295,7 +304,7 @@
 					class="ch-header sticky top-0 z-30 flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 transition-transform duration-200 sm:px-6 dark:border-slate-800 dark:bg-slate-950"
 					class:-translate-y-full={headerHidden && isMobile}
 				>
-					<div class="flex min-w-0 items-center gap-2">
+					<div class="flex min-w-0 flex-1 items-center gap-2">
 						<button
 							type="button"
 							onclick={toggleSidebar}
@@ -305,13 +314,22 @@
 						>
 							<Icon name="panel-left" class="h-5 w-5" />
 						</button>
-						<nav class="flex min-w-0 items-center gap-1 text-sm" aria-label="Breadcrumb">
+						<!-- Intermediate crumbs never shrink, so a deep trail scrolls here
+						     rather than overflowing across the account controls. -->
+						<nav
+							bind:this={crumbNav}
+							class="ch-no-scrollbar mr-2 flex min-w-0 items-center gap-1 overflow-x-auto text-sm"
+							aria-label="Breadcrumb"
+						>
 							{#each breadcrumbs as crumb, i (crumb.href)}
 								{#if i > 0}
 									<Icon name="chevron-divider" class="h-3.5 w-3.5 shrink-0 text-slate-400" />
 								{/if}
 								{#if i === breadcrumbs.length - 1}
-									<span class="truncate font-medium text-slate-900 dark:text-slate-100">{crumb.label}</span>
+									<span
+										class="max-w-[60vw] shrink-0 truncate font-medium text-slate-900 dark:text-slate-100"
+										>{crumb.label}</span
+									>
 								{:else}
 									<a
 										href={crumb.href}
@@ -323,7 +341,7 @@
 							{/each}
 						</nav>
 					</div>
-					<div class="flex items-center gap-4">
+					<div class="flex shrink-0 items-center gap-4">
 						<button
 							type="button"
 							onclick={toggleTheme}
@@ -521,7 +539,7 @@
 			<button
 				type="button"
 				onclick={() => updateServiceWorker(true)}
-				class="shrink-0 rounded-md bg-sky-600 px-3 py-1 text-sm font-medium text-white hover:bg-sky-500"
+				class="shrink-0 rounded-md bg-sky-600 px-3 py-1 text-sm font-medium text-white hover:bg-sky-700"
 			>
 				Update
 			</button>

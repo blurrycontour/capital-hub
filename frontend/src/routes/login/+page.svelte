@@ -116,7 +116,7 @@
 					<input
 						bind:value={identifier}
 						required
-						class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 dark:border-slate-700 dark:bg-slate-900"
+						class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-sky-500 dark:border-slate-700 dark:bg-slate-900"
 					/>
 				</label>
 
@@ -126,14 +126,14 @@
 						type="password"
 						bind:value={password}
 						required
-						class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 dark:border-slate-700 dark:bg-slate-900"
+						class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-sky-500 dark:border-slate-700 dark:bg-slate-900"
 					/>
 				</label>
 
 				<button
 					type="submit"
 					disabled={loading}
-					class="w-full rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-60"
+					class="w-full rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
 				>
 					{loading ? 'Signing in...' : 'Sign in'}
 				</button>

@@ -173,7 +173,7 @@
 
 <div
 	class={expanded
-		? 'fixed inset-0 z-[1000] flex flex-col bg-slate-900/60 p-4 backdrop-blur-sm'
+		? 'ch-overlay-inset fixed inset-0 z-[1000] flex flex-col bg-slate-900/60 backdrop-blur-sm'
 		: `relative isolate ${height}`}
 >
 	<div class="relative h-full w-full flex-1">

@@ -54,9 +54,11 @@
 
 <svelte:head><title>Sign in · Capital Hub</title></svelte:head>
 
-<section class="relative grid min-h-screen w-full md:grid-cols-2">
+<section class="relative grid min-h-dvh w-full md:grid-cols-2">
 	<!-- Theme toggle (always visible on login screen) -->
-	<div class="absolute right-4 top-4 z-10">
+	<div
+		class="absolute right-[calc(1rem+var(--ch-safe-right))] top-[calc(1rem+var(--ch-safe-top))] z-10"
+	>
 		<button
 			type="button"
 			onclick={toggleTheme}
@@ -82,7 +84,9 @@
 	</div>
 
 	<!-- Right: sign-in form -->
-	<div class="flex items-center justify-center p-6">
+	<div
+		class="flex items-center justify-center pt-[calc(1.5rem+var(--ch-safe-top))] pr-[calc(1.5rem+var(--ch-safe-right))] pb-[calc(1.5rem+var(--ch-safe-bottom))] pl-[calc(1.5rem+var(--ch-safe-left))]"
+	>
 		<div class="w-full max-w-md space-y-4">
 			<div class="flex items-center justify-center md:hidden">
 				<img src="/logo-text.svg" alt="Capital Hub" class="h-11 w-auto rounded-lg" />

@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import Icon from '$lib/Icon.svelte';
+	import { canEditContents } from '$lib/access';
 	import Modal from '$lib/Modal.svelte';
 	import LocationPicker from '$lib/LocationPicker.svelte';
 	import CustomFieldsEditor from '$lib/CustomFieldsEditor.svelte';
@@ -36,7 +37,7 @@
 
 	// Only collections the user can add items to.
 	const writableCollections = $derived(
-		collections.filter((c) => c.accessLevel === 'owner' || c.accessLevel === 'write')
+		collections.filter((c) => canEditContents(c.accessLevel))
 	);
 
 	async function openCreateItem() {

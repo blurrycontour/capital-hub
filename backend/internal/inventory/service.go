@@ -147,7 +147,7 @@ type Collection struct {
 	// Sharing metadata, relative to the requesting user.
 	OwnerName   string `json:"ownerName"`
 	Shared      bool   `json:"shared"`      // true when not owned by the requester
-	AccessLevel string `json:"accessLevel"` // "owner" | "write" | "read"
+	AccessLevel string `json:"accessLevel"` // "owner" | "full" | "write" | "read"
 	ShareCount  int    `json:"shareCount"`  // number of users this collection is shared with
 }
 
@@ -240,21 +240,48 @@ func scanCollection(s interface{ Scan(...any) error }, userID int64) (Collection
 	c.CustomFields = unmarshalCustomFields(customFields)
 	c.OwnerName = ownerName
 	if ownerID == userID {
-		c.AccessLevel = "owner"
+		c.AccessLevel = AccessOwner
 		c.Shared = false
 	} else {
 		c.Shared = true
-		if myAccess.Valid && myAccess.String == "write" {
-			c.AccessLevel = "write"
-		} else {
-			c.AccessLevel = "read"
-		}
+		c.AccessLevel = normalizeShareAccess(myAccess.String)
 	}
 	return c, nil
 }
 
-// collectionAccessLevel returns "owner", "write" or "read" for the user's
-// access to a collection, or ErrNotFound when they have no access at all.
+// Access levels, weakest to strongest. "read" and "write" and "full" are the
+// values stored in collection_shares.access; "owner" is derived from the
+// collection's user_id and is never stored as a share.
+//
+//	read  - view the collection and its contents
+//	write - additionally add/edit/delete items and entries
+//	full  - additionally edit the collection's own details
+//	owner - additionally delete the collection and manage who it is shared with
+const (
+	AccessRead  = "read"
+	AccessWrite = "write"
+	AccessFull  = "full"
+	AccessOwner = "owner"
+)
+
+// ShareAccessLevels are the levels a collection may be shared at.
+var ShareAccessLevels = []string{AccessRead, AccessWrite, AccessFull}
+
+func isShareAccessLevel(s string) bool {
+	return s == AccessRead || s == AccessWrite || s == AccessFull
+}
+
+// normalizeShareAccess maps a stored share value onto a known level, treating
+// anything unrecognised as read-only so an unexpected value cannot widen access.
+func normalizeShareAccess(stored string) string {
+	if isShareAccessLevel(stored) {
+		return stored
+	}
+	return AccessRead
+}
+
+// collectionAccessLevel returns "owner", "full", "write" or "read" for the
+// user's access to a collection, or ErrNotFound when they have no access at all.
 func (s *Service) collectionAccessLevel(ctx context.Context, userID, collectionID int64) (string, error) {
 	var ownerID int64
 	err := s.db.QueryRowContext(ctx, `SELECT user_id FROM collections WHERE id = ?`, collectionID).Scan(&ownerID)
@@ -265,7 +292,7 @@ func (s *Service) collectionAccessLevel(ctx context.Context, userID, collectionI
 		return "", fmt.Errorf("lookup collection owner: %w", err)
 	}
 	if ownerID == userID {
-		return "owner", nil
+		return AccessOwner, nil
 	}
 	var access string
 	err = s.db.QueryRowContext(ctx,
@@ -278,10 +305,7 @@ func (s *Service) collectionAccessLevel(ctx context.Context, userID, collectionI
 	if err != nil {
 		return "", fmt.Errorf("lookup collection share: %w", err)
 	}
-	if access == "write" {
-		return "write", nil
-	}
-	return "read", nil
+	return normalizeShareAccess(access), nil
 }
 
 // requireCollectionWrite ensures the user can modify a collection's contents.
@@ -291,7 +315,22 @@ func (s *Service) requireCollectionWrite(ctx context.Context, userID, collection
 	if err != nil {
 		return err
 	}
-	if lvl == "read" {
+	if lvl == AccessRead {
+		return ErrForbidden
+	}
+	return nil
+}
+
+// requireCollectionManage ensures the user can edit the collection's own
+// details (name, description, currency, location, custom fields). Owners and
+// "full" sharees qualify; deleting the collection and managing its shares stay
+// owner-only via requireCollectionOwner.
+func (s *Service) requireCollectionManage(ctx context.Context, userID, collectionID int64) error {
+	lvl, err := s.collectionAccessLevel(ctx, userID, collectionID)
+	if err != nil {
+		return err
+	}
+	if lvl != AccessOwner && lvl != AccessFull {
 		return ErrForbidden
 	}
 	return nil
@@ -403,17 +442,20 @@ func (s *Service) CreateCollection(ctx context.Context, userID int64, in Collect
 	return s.GetCollection(ctx, userID, id)
 }
 
-// UpdateCollection updates an owned collection.
+// UpdateCollection updates a collection the user owns or has "full" access to.
 func (s *Service) UpdateCollection(ctx context.Context, userID, id int64, in CollectionInput) (*Collection, error) {
 	if err := normalizeCollection(&in); err != nil {
+		return nil, err
+	}
+	if err := s.requireCollectionManage(ctx, userID, id); err != nil {
 		return nil, err
 	}
 	res, err := s.db.ExecContext(ctx,
 		`UPDATE collections SET name = ?, description = ?, currency = ?, location_lat = ?, location_lng = ?,
 		 location_label = ?, custom_fields = ?, updated_at = datetime('now'), updated_by = ?
-		 WHERE id = ? AND user_id = ?`,
+		 WHERE id = ?`,
 		in.Name, in.Description, in.Currency, in.LocationLat, in.LocationLng, in.LocationLabel,
-		marshalJSONField(in.CustomFields), userID, id, userID,
+		marshalJSONField(in.CustomFields), userID, id,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("update collection: %w", err)
@@ -444,7 +486,7 @@ type CollectionShare struct {
 	Username    string `json:"username"`
 	Email       string `json:"email"`
 	DisplayName string `json:"displayName"`
-	Access      string `json:"access"` // "read" | "write"
+	Access      string `json:"access"` // "read" | "write" | "full"
 }
 
 // requireCollectionOwner returns ErrNotFound unless the user owns the collection.
@@ -453,7 +495,7 @@ func (s *Service) requireCollectionOwner(ctx context.Context, userID, collection
 	if err != nil {
 		return err
 	}
-	if lvl != "owner" {
+	if lvl != AccessOwner {
 		return ErrForbidden
 	}
 	return nil
@@ -541,8 +583,8 @@ func (s *Service) ShareCollection(ctx context.Context, userID, collectionID int6
 		return nil, errors.New("username or email is required")
 	}
 	access = strings.ToLower(strings.TrimSpace(access))
-	if access != "read" && access != "write" {
-		return nil, errors.New("access must be 'read' or 'write'")
+	if !isShareAccessLevel(access) {
+		return nil, fmt.Errorf("access must be one of %s", strings.Join(ShareAccessLevels, ", "))
 	}
 
 	var target CollectionShare

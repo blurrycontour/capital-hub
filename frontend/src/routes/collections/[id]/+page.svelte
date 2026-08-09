@@ -3,6 +3,15 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import Icon from '$lib/Icon.svelte';
+	import {
+		canEditContents,
+		canEditCollection,
+		isOwner as isOwnerLevel,
+		accessLabel,
+		accessDescription,
+		SHARE_ACCESS_OPTIONS
+	} from '$lib/access';
+	import CountBadge from '$lib/CountBadge.svelte';
 	import Modal from '$lib/Modal.svelte';
 	import LocationPicker from '$lib/LocationPicker.svelte';
 	import CustomFieldsEditor from '$lib/CustomFieldsEditor.svelte';
@@ -26,7 +35,8 @@
 		type Item,
 		type Stats,
 		type CustomField,
-		type CollectionShare
+		type CollectionShare,
+		type CollectionAccess
 	} from '$lib/api';
 
 	const collectionId = $derived(Number($page.params.id));
@@ -38,10 +48,10 @@
 	let error = $state('');
 
 	// Permission helpers derived from the loaded collection.
-	const isOwner = $derived(collection?.accessLevel === 'owner');
-	const canWrite = $derived(
-		collection?.accessLevel === 'owner' || collection?.accessLevel === 'write'
-	);
+	const isOwner = $derived(isOwnerLevel(collection?.accessLevel));
+	const canWrite = $derived(canEditContents(collection?.accessLevel));
+	// Editing the collection's own details also allows the "full" share level.
+	const canManage = $derived(canEditCollection(collection?.accessLevel));
 
 	// Edit collection modal.
 	let editModal = $state(false);
@@ -77,7 +87,7 @@
 	let shares = $state<CollectionShare[]>([]);
 	let sharesLoading = $state(false);
 	let shareIdentifier = $state('');
-	let shareAccess = $state<'read' | 'write'>('read');
+	let shareAccess = $state<CollectionAccess>('read');
 	let sharing = $state(false);
 	let shareError = $state('');
 
@@ -309,16 +319,19 @@
 					>
 						<Icon name="info" class="h-5 w-5" />
 					</button>
-					{#if isOwner}
+					<!-- Sharing and deletion stay with the owner; "full" adds Edit. -->
+					{#if canManage}
 						<Dropdown label="Options">
-							<button
-								type="button"
-								role="menuitem"
-								class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
-								onclick={openShare}
-							>
-								<Icon name="share" class="h-4 w-4 text-slate-500" /> Share
-							</button>
+							{#if isOwner}
+								<button
+									type="button"
+									role="menuitem"
+									class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
+									onclick={openShare}
+								>
+									<Icon name="share" class="h-4 w-4 text-slate-500" /> Share
+								</button>
+							{/if}
 							<button
 								type="button"
 								role="menuitem"
@@ -327,14 +340,16 @@
 							>
 								<Icon name="pencil" class="h-4 w-4 text-slate-500" /> Edit
 							</button>
-							<button
-								type="button"
-								role="menuitem"
-								class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40"
-								onclick={() => (deleteModal = true)}
-							>
-								<Icon name="trash" class="h-4 w-4" /> Delete
-							</button>
+							{#if isOwner}
+								<button
+									type="button"
+									role="menuitem"
+									class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40"
+									onclick={() => (deleteModal = true)}
+								>
+									<Icon name="trash" class="h-4 w-4" /> Delete
+								</button>
+							{/if}
 						</Dropdown>
 					{/if}
 				</div>
@@ -351,7 +366,7 @@
 				{#if collection.shared}
 					<span
 						class="inline-flex shrink-0 items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700 dark:bg-violet-950/40 dark:text-violet-300"
-						title={`Shared by ${collection.ownerName} (${collection.accessLevel === 'write' ? 'can edit' : 'read only'})`}
+						title={`Shared by ${collection.ownerName} (${accessDescription(collection.accessLevel)})`}
 					>
 						<Icon name="users" class="h-3.5 w-3.5" />
 						Shared by {collection.ownerName}
@@ -387,7 +402,14 @@
 			{/if}
 
 			{#if stats}
-				<div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+				<div class="mt-4 flex flex-wrap items-center gap-2">
+					<CountBadge icon="cube" value={stats.itemCount} label="items" />
+					<CountBadge icon="list" value={stats.entryCount} label="entries" />
+				</div>
+			{/if}
+
+			{#if stats && stats.totals.length > 0}
+				<div class="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
 					{#each stats.totals as t (t.currency)}
 						<div class="rounded-md border border-slate-200 p-3 dark:border-slate-800">
 							<div class="text-xs text-slate-500">Net {t.currency}</div>
@@ -412,14 +434,6 @@
 							</div>
 						</div>
 					{/each}
-					<div class="rounded-md border border-slate-200 p-3 dark:border-slate-800">
-						<div class="text-xs text-slate-500">Items</div>
-						<div class="text-lg font-semibold">{stats.itemCount}</div>
-					</div>
-					<div class="rounded-md border border-slate-200 p-3 dark:border-slate-800">
-						<div class="text-xs text-slate-500">Entries</div>
-						<div class="text-lg font-semibold">{stats.entryCount}</div>
-					</div>
 				</div>
 			{/if}
 		</div>
@@ -736,10 +750,12 @@
 				/>
 				<select
 					bind:value={shareAccess}
+					aria-label="Access level"
 					class="rounded-md border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900"
 				>
-					<option value="read">Read</option>
-					<option value="write">Write</option>
+					{#each SHARE_ACCESS_OPTIONS as opt (opt.value)}
+						<option value={opt.value}>{opt.label}</option>
+					{/each}
 				</select>
 				<button
 					type="button"
@@ -750,6 +766,10 @@
 					<Icon name="share" class="h-4 w-4" /> Share
 				</button>
 			</div>
+			<p class="text-xs text-slate-500">
+				{SHARE_ACCESS_OPTIONS.find((o) => o.value === shareAccess)?.hint}. Only you can delete this
+				collection or change who it is shared with.
+			</p>
 		</div>
 
 		<div class="space-y-2">
@@ -770,7 +790,7 @@
 								<span
 									class="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300"
 								>
-									{s.access === 'write' ? 'Write' : 'Read'}
+									{accessLabel(s.access)}
 								</span>
 								<button
 									type="button"

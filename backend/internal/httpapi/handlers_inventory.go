@@ -246,8 +246,11 @@ func (s *Server) handleShareCollection(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		accessLabel := "read only"
-		if accessLevel == "write" {
+		switch accessLevel {
+		case inventory.AccessWrite:
 			accessLabel = "can edit"
+		case inventory.AccessFull:
+			accessLabel = "full control"
 		}
 		_ = s.notify.CreateInApp(ctx, notify.InAppInput{
 			UserID: recipientID,

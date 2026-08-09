@@ -11,6 +11,7 @@
 	} from '$lib/api';
 	import { auth } from '$lib/auth.svelte';
 	import Icon, { type IconName } from '$lib/Icon.svelte';
+	import CountBadge, { type BadgeTone } from '$lib/CountBadge.svelte';
 	import MapView from '$lib/MapView.svelte';
 
 	const user = $derived(auth.user);
@@ -33,19 +34,19 @@
 	const creditLabel = $derived(moneyLabel((t) => t.credit));
 	const debitLabel = $derived(moneyLabel((t) => t.debit));
 
+	// Money totals stay as cards; the portfolio counts render as badges below.
 	const cards: { label: string; icon: IconName; value: string; tone: 'neutral' | 'credit' | 'debit' }[] =
 		$derived([
 			{ label: 'Total Debit', icon: 'currency', value: debitLabel, tone: 'debit' },
 			{ label: 'Total Credit', icon: 'currency', value: creditLabel, tone: 'credit' },
-			{ label: 'Net Expense', icon: 'currency', value: netLabel, tone: 'neutral' },
-			{
-				label: 'Total Collections',
-				icon: 'collections',
-				value: String(summary.collections),
-				tone: 'neutral'
-			},
-			{ label: 'Total Items', icon: 'cube', value: String(summary.items), tone: 'neutral' }
+			{ label: 'Net Expense', icon: 'currency', value: netLabel, tone: 'neutral' }
 		]);
+
+	const counts: { label: string; icon: IconName; value: number; tone: BadgeTone }[] = $derived([
+		{ label: 'collections', icon: 'collections', value: summary.collections, tone: 'collections' },
+		{ label: 'items', icon: 'cube', value: summary.items, tone: 'items' },
+		{ label: 'entries', icon: 'list', value: summary.entries, tone: 'entries' }
+	]);
 
 	// Compact "x ago" label for the recent-items list.
 	function timeAgo(iso: string): string {
@@ -119,6 +120,13 @@
 			{error}
 		</div>
 	{/if}
+
+	<!-- Portfolio counts -->
+	<div class="flex flex-wrap items-center gap-2">
+		{#each counts as c (c.label)}
+			<CountBadge icon={c.icon} value={c.value} label={c.label} tone={c.tone} />
+		{/each}
+	</div>
 
 	<!-- Summary cards -->
 	<div class="grid gap-4 sm:grid-cols-3">

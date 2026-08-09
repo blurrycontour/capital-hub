@@ -49,7 +49,7 @@
 		{
 			icon: 'share' as const,
 			title: 'Share',
-			desc: 'Invite other users to a collection with read-only or read-write access.'
+			desc: 'Invite other users to a collection as read, write, or full control. Only the owner can delete a collection or change who it is shared with.'
 		},
 		{
 			icon: 'bell' as const,

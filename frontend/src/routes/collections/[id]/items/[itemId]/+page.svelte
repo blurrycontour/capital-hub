@@ -3,6 +3,8 @@
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import Icon from '$lib/Icon.svelte';
+	import { canEditContents } from '$lib/access';
+	import CountBadge from '$lib/CountBadge.svelte';
 	import Modal from '$lib/Modal.svelte';
 	import LocationPicker from '$lib/LocationPicker.svelte';
 	import CustomFieldsEditor from '$lib/CustomFieldsEditor.svelte';
@@ -51,9 +53,7 @@
 	const currency = $derived(collection?.currency ?? 'EUR');
 
 	// Write access derived from the parent collection's access level.
-	const canWrite = $derived(
-		collection?.accessLevel === 'owner' || collection?.accessLevel === 'write'
-	);
+	const canWrite = $derived(canEditContents(collection?.accessLevel));
 
 	// Edit item modal
 	let editModal = $state(false);
@@ -277,7 +277,7 @@
 			moveTargets = all.filter(
 				(c) =>
 					c.id !== item!.collectionId &&
-					(c.accessLevel === 'owner' || c.accessLevel === 'write')
+					canEditContents(c.accessLevel)
 			);
 		} catch (e) {
 			moveError = e instanceof Error ? e.message : 'Failed to load collections';
@@ -593,6 +593,12 @@
 
 				<!-- Stats -->
 				{#if stats}
+					<div class="flex flex-wrap items-center gap-2">
+						<CountBadge icon="list" value={stats.entryCount} label="entries" tone="entries" />
+					</div>
+				{/if}
+
+				{#if stats && stats.totals.length > 0}
 					<div class="grid gap-3 sm:grid-cols-3">
 						{#each stats.totals as t (t.currency)}
 							<div class="rounded-md border border-slate-200 p-3 dark:border-slate-800">
@@ -618,10 +624,6 @@
 								</div>
 							</div>
 						{/each}
-						<div class="rounded-md border border-slate-200 p-3 dark:border-slate-800">
-							<div class="text-xs text-slate-500">Entries</div>
-							<div class="text-lg font-semibold">{stats.entryCount}</div>
-						</div>
 					</div>
 				{/if}
 			</div>

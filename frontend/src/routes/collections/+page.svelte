@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import Icon from '$lib/Icon.svelte';
+	import { accessDescription } from '$lib/access';
 	import Modal from '$lib/Modal.svelte';
 	import LocationPicker from '$lib/LocationPicker.svelte';
 	import CustomFieldsEditor from '$lib/CustomFieldsEditor.svelte';
@@ -232,7 +233,7 @@
 								{#if c.shared}
 									<span
 										class="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 font-medium text-violet-700 dark:bg-violet-950/40 dark:text-violet-300"
-										title={`Shared by ${c.ownerName} (${c.accessLevel === 'write' ? 'can edit' : 'read only'})`}
+										title={`Shared by ${c.ownerName} (${accessDescription(c.accessLevel)})`}
 									>
 										<Icon name="users" class="h-3 w-3" />
 										Shared
@@ -299,7 +300,7 @@
 							{#if c.shared}
 								<span
 									class="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 font-medium text-violet-700 dark:bg-violet-950/40 dark:text-violet-300"
-									title={`Shared by ${c.ownerName} (${c.accessLevel === 'write' ? 'can edit' : 'read only'})`}
+									title={`Shared by ${c.ownerName} (${accessDescription(c.accessLevel)})`}
 								>
 									<Icon name="users" class="h-3 w-3" />
 									Shared

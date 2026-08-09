@@ -359,16 +359,21 @@ export type Collection = {
 	itemCount: number;
 	ownerName: string;
 	shared: boolean;
-	accessLevel: 'owner' | 'write' | 'read';
+	// Ordered weakest to strongest: read < write < full < owner.
+	// `full` additionally allows editing the collection's own details.
+	accessLevel: CollectionAccess | 'owner';
 	shareCount: number;
 };
+
+// Levels a collection can be shared at.
+export type CollectionAccess = 'read' | 'write' | 'full';
 
 export type CollectionShare = {
 	userId: number;
 	username: string;
 	email: string;
 	displayName: string;
-	access: 'read' | 'write';
+	access: CollectionAccess;
 };
 
 export type Item = {
@@ -524,7 +529,7 @@ export async function listCollectionShares(id: number): Promise<CollectionShare[
 export async function shareCollection(
 	id: number,
 	identifier: string,
-	access: 'read' | 'write'
+	access: CollectionAccess
 ): Promise<CollectionShare> {
 	const body = await mutate<{ share: CollectionShare }>(
 		`/api/v1/collections/${id}/shares`,

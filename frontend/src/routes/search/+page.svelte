@@ -120,7 +120,7 @@
 			bind:value={query}
 			oninput={onInput}
 			placeholder="Search collections, items and entries..."
-			class="w-full rounded-md border border-slate-300 bg-white py-2 pl-10 pr-3 text-sm outline-none focus:border-sky-500 dark:border-slate-700 dark:bg-slate-900"
+			class="w-full rounded-md border border-slate-300 bg-white py-2 pl-10 pr-3 text-sm focus:border-sky-500 dark:border-slate-700 dark:bg-slate-900"
 		/>
 	</div>
 

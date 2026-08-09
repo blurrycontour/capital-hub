@@ -54,9 +54,11 @@
 
 <svelte:head><title>Sign in · Capital Hub</title></svelte:head>
 
-<section class="relative grid min-h-screen w-full md:grid-cols-2">
+<section class="relative grid min-h-dvh w-full md:grid-cols-2">
 	<!-- Theme toggle (always visible on login screen) -->
-	<div class="absolute right-4 top-4 z-10">
+	<div
+		class="absolute right-[calc(1rem+var(--ch-safe-right))] top-[calc(1rem+var(--ch-safe-top))] z-10"
+	>
 		<button
 			type="button"
 			onclick={toggleTheme}
@@ -82,7 +84,9 @@
 	</div>
 
 	<!-- Right: sign-in form -->
-	<div class="flex items-center justify-center p-6">
+	<div
+		class="flex items-center justify-center pt-[calc(1.5rem+var(--ch-safe-top))] pr-[calc(1.5rem+var(--ch-safe-right))] pb-[calc(1.5rem+var(--ch-safe-bottom))] pl-[calc(1.5rem+var(--ch-safe-left))]"
+	>
 		<div class="w-full max-w-md space-y-4">
 			<div class="flex items-center justify-center md:hidden">
 				<img src="/logo-text.svg" alt="Capital Hub" class="h-11 w-auto rounded-lg" />
@@ -112,7 +116,7 @@
 					<input
 						bind:value={identifier}
 						required
-						class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 dark:border-slate-700 dark:bg-slate-900"
+						class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-sky-500 dark:border-slate-700 dark:bg-slate-900"
 					/>
 				</label>
 
@@ -122,14 +126,14 @@
 						type="password"
 						bind:value={password}
 						required
-						class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 dark:border-slate-700 dark:bg-slate-900"
+						class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-sky-500 dark:border-slate-700 dark:bg-slate-900"
 					/>
 				</label>
 
 				<button
 					type="submit"
 					disabled={loading}
-					class="w-full rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-60"
+					class="w-full rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
 				>
 					{loading ? 'Signing in...' : 'Sign in'}
 				</button>

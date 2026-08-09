@@ -30,7 +30,7 @@
 
 {#if open}
 	<div
-		class="fixed inset-0 z-50 flex items-center justify-center p-4"
+		class="ch-overlay-inset fixed inset-0 z-50 flex items-center justify-center"
 		role="presentation"
 	>
 		<button
@@ -40,7 +40,7 @@
 			onclick={close}
 		></button>
 		<div
-			class="relative z-10 flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-800 dark:bg-slate-900"
+			class="relative z-10 flex max-h-full w-full max-w-lg flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-800 dark:bg-slate-900"
 			role="dialog"
 			aria-modal="true"
 			aria-label={title}

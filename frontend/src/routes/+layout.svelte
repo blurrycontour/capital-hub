@@ -80,6 +80,15 @@
 	const isLoginRoute = $derived($page.url.pathname.startsWith('/login'));
 	const showChrome = $derived(auth.isAuthenticated && !isLoginRoute);
 
+	// A deep trail overflows the breadcrumb bar on narrow screens. Keep it
+	// scrolled to the end so the current page stays visible and the ancestors
+	// scroll out of view instead.
+	let crumbNav = $state<HTMLElement | null>(null);
+	$effect(() => {
+		void breadcrumbs;
+		if (crumbNav) crumbNav.scrollLeft = crumbNav.scrollWidth;
+	});
+
 	onMount(() => {
 		theme = getInitialTheme();
 		applyTheme(theme);
@@ -214,30 +223,31 @@
 	}
 </script>
 
-<div class="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+<div class="min-h-dvh bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
 	{#if !auth.loaded}
-		<div class="flex min-h-screen items-center justify-center text-sm text-slate-500">
+		<div class="flex min-h-dvh items-center justify-center text-sm text-slate-500">
 			Loading...
 		</div>
 	{:else if showChrome}
-		<div class="flex min-h-screen">
+		<div class="ch-safe-x flex min-h-dvh">
 			{#if mobileOpen}
-				<!-- Mobile drawer backdrop -->
+				<!-- Mobile drawer backdrop. Sits above the bottom navigation so the
+				     drawer takes over the whole screen while it is open. -->
 				<button
 					type="button"
 					aria-label="Close menu"
 					onclick={() => (mobileOpen = false)}
-					class="fixed inset-0 z-30 bg-slate-900/50 backdrop-blur-sm md:hidden"
+					class="fixed inset-0 z-40 bg-slate-900/50 backdrop-blur-sm md:hidden"
 				></button>
 			{/if}
 			<aside
-				class="fixed inset-y-0 left-0 z-40 flex h-screen shrink-0 flex-col border-r border-slate-200 bg-slate-100 transition-transform duration-200 md:sticky md:top-0 md:z-auto md:translate-x-0 md:transition-[width] dark:border-slate-800 dark:bg-slate-900"
+				class="ch-drawer fixed inset-y-0 left-0 z-50 flex h-dvh shrink-0 flex-col border-r border-slate-200 bg-slate-100 transition-transform duration-200 md:sticky md:top-0 md:z-auto md:translate-x-0 md:transition-[width] dark:border-slate-800 dark:bg-slate-900"
 				class:w-64={expanded}
 				class:w-16={!expanded}
 				class:-translate-x-full={!mobileOpen}
 			>
 				<div
-					class="flex h-14 shrink-0 items-center border-b border-slate-200 px-3 dark:border-slate-800 text-xl"
+					class="ch-header flex shrink-0 items-center border-b border-slate-200 px-3 dark:border-slate-800 text-xl"
 					class:justify-center={!expanded}
 				>
 					<div class="flex min-w-0 items-center gap-2">
@@ -251,7 +261,9 @@
 					</div>
 				</div>
 
-				<nav class="flex-1 space-y-1 overflow-y-auto p-2 text-base">
+				<nav
+					class="flex-1 space-y-1 overflow-y-auto p-2 pb-[calc(0.5rem+var(--ch-safe-bottom))] text-base"
+				>
 					{#each navItems as item (item.href)}
 						{#if !item.adminOnly || auth.user?.isAdmin}
 							{@const active =
@@ -289,10 +301,10 @@
 
 			<div class="flex min-w-0 flex-1 flex-col">
 				<header
-					class="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-slate-200 bg-slate-50 px-4 transition-transform duration-200 sm:px-6 dark:border-slate-800 dark:bg-slate-950"
+					class="ch-header sticky top-0 z-30 flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 transition-transform duration-200 sm:px-6 dark:border-slate-800 dark:bg-slate-950"
 					class:-translate-y-full={headerHidden && isMobile}
 				>
-					<div class="flex min-w-0 items-center gap-2">
+					<div class="flex min-w-0 flex-1 items-center gap-2">
 						<button
 							type="button"
 							onclick={toggleSidebar}
@@ -302,13 +314,22 @@
 						>
 							<Icon name="panel-left" class="h-5 w-5" />
 						</button>
-						<nav class="flex min-w-0 items-center gap-1 text-sm" aria-label="Breadcrumb">
+						<!-- Intermediate crumbs never shrink, so a deep trail scrolls here
+						     rather than overflowing across the account controls. -->
+						<nav
+							bind:this={crumbNav}
+							class="ch-no-scrollbar mr-2 flex min-w-0 items-center gap-1 overflow-x-auto text-sm"
+							aria-label="Breadcrumb"
+						>
 							{#each breadcrumbs as crumb, i (crumb.href)}
 								{#if i > 0}
 									<Icon name="chevron-divider" class="h-3.5 w-3.5 shrink-0 text-slate-400" />
 								{/if}
 								{#if i === breadcrumbs.length - 1}
-									<span class="truncate font-medium text-slate-900 dark:text-slate-100">{crumb.label}</span>
+									<span
+										class="max-w-[60vw] shrink-0 truncate font-medium text-slate-900 dark:text-slate-100"
+										>{crumb.label}</span
+									>
 								{:else}
 									<a
 										href={crumb.href}
@@ -320,7 +341,7 @@
 							{/each}
 						</nav>
 					</div>
-					<div class="flex items-center gap-4">
+					<div class="flex shrink-0 items-center gap-4">
 						<button
 							type="button"
 							onclick={toggleTheme}
@@ -449,7 +470,11 @@
 					</div>
 				</header>
 
-				<main class="flex-1 p-4 pb-20 md:pb-4">
+				<!-- Horizontal padding tracks the header so page content lines up with
+				     the breadcrumb; the bottom clears the fixed mobile navigation. -->
+				<main
+					class="flex-1 px-4 py-4 pb-[calc(1rem+var(--ch-bottom-nav))] sm:px-6 md:pb-4"
+				>
 					{#if authError}
 						<div
 							class="mb-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-amber-800 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
@@ -463,7 +488,7 @@
 
 			<!-- Permanent bottom navigation (mobile only) -->
 			<nav
-				class="fixed inset-x-0 bottom-0 z-40 flex items-stretch border-t border-slate-200 bg-white md:hidden dark:border-slate-800 dark:bg-slate-900"
+				class="ch-bottom-nav fixed inset-x-0 bottom-0 z-30 flex items-stretch border-t border-slate-200 bg-white md:hidden dark:border-slate-800 dark:bg-slate-900"
 				aria-label="Primary"
 			>
 				{#each bottomNavItems as item (item.href)}
@@ -499,20 +524,22 @@
 	{:else if isLoginRoute}
 		{@render children()}
 	{:else}
-		<div class="flex min-h-screen items-center justify-center text-sm text-slate-500">
+		<div class="flex min-h-dvh items-center justify-center text-sm text-slate-500">
 			Redirecting...
 		</div>
 	{/if}
 
 	{#if swUpdateAvailable}
 		<div
-			class="fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-lg dark:border-slate-700 dark:bg-slate-900"
+			class="fixed bottom-[calc(0.75rem+var(--ch-bottom-nav))] left-1/2 z-50 flex w-[calc(100%-2rem)] max-w-md -translate-x-1/2 items-center gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-lg md:bottom-4 md:w-auto dark:border-slate-700 dark:bg-slate-900"
 		>
-			<span class="text-sm text-slate-700 dark:text-slate-200">A new version is available.</span>
+			<span class="flex-1 text-sm text-slate-700 dark:text-slate-200"
+				>A new version is available.</span
+			>
 			<button
 				type="button"
 				onclick={() => updateServiceWorker(true)}
-				class="rounded-md bg-sky-600 px-3 py-1 text-sm font-medium text-white hover:bg-sky-500"
+				class="shrink-0 rounded-md bg-sky-600 px-3 py-1 text-sm font-medium text-white hover:bg-sky-700"
 			>
 				Update
 			</button>
@@ -520,7 +547,7 @@
 				type="button"
 				onclick={() => needRefresh.set(false)}
 				aria-label="Dismiss update notification"
-				class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+				class="shrink-0 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
 			>
 				<Icon name="close" class="h-4 w-4" />
 			</button>

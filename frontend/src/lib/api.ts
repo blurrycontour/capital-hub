@@ -1,3 +1,5 @@
+import type { NumberFormat } from './money.svelte';
+
 export type ApiUser = {
 	id: number;
 	username: string;
@@ -85,7 +87,7 @@ export async function uploadAvatar(file: File): Promise<ApiUser> {
 	return body.user;
 }
 
-export type NumberFormat = 'international' | 'indian' | 'european';
+export type { NumberFormat } from './money.svelte';
 
 export type UserPreferences = {
 	includeSharedInStats: boolean;
@@ -738,51 +740,13 @@ export const CURRENCIES = [
 	'AED'
 ];
 
-// Number of decimal places used when formatting money. Configurable via user
-// preferences (0–2, default 0). Set globally once preferences load so every
-// formatCurrency call across the app reflects the user's choice.
-let amountDecimals = 0;
-
-export function setAmountDecimals(n: number): void {
-	amountDecimals = Math.min(2, Math.max(0, Math.trunc(n || 0)));
-}
-
-export function getAmountDecimals(): number {
-	return amountDecimals;
-}
-
-// Money number formatting style. Controls digit grouping and the decimal
-// separator. Configurable via user preferences (default 'international').
-let numberFormat: NumberFormat = 'international';
-
-const NUMBER_FORMAT_LOCALES: Record<NumberFormat, string> = {
-	international: 'en-US', // 1,234,567.89
-	indian: 'en-IN', // 12,34,567.89
-	european: 'de-DE' // 1.234.567,89
-};
-
-export function setNumberFormat(f: string): void {
-	numberFormat = f === 'indian' || f === 'european' ? f : 'international';
-}
-
-export function getNumberFormat(): NumberFormat {
-	return numberFormat;
-}
-
-// Format a currency total for display.
-export function formatCurrency(amount: number, currency: string): string {
-	const locale = NUMBER_FORMAT_LOCALES[numberFormat];
-	try {
-		return new Intl.NumberFormat(locale, {
-			style: 'currency',
-			currency,
-			minimumFractionDigits: amountDecimals,
-			maximumFractionDigits: amountDecimals
-		}).format(amount);
-	} catch {
-		return `${amount.toLocaleString(locale, {
-			minimumFractionDigits: amountDecimals,
-			maximumFractionDigits: amountDecimals
-		})} ${currency}`;
-	}
-}
+// Money display preferences and formatting live in `money.svelte.ts` so they
+// can be reactive `$state`; re-exported here to keep `$lib/api` the single
+// import site for callers.
+export {
+	setAmountDecimals,
+	getAmountDecimals,
+	setNumberFormat,
+	getNumberFormat,
+	formatCurrency
+} from './money.svelte';

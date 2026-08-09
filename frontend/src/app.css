@@ -5,6 +5,26 @@
 
 :root {
 	color-scheme: light dark;
+
+	/* Device safe-area insets (notch, rounded corners, home indicator). These
+	   resolve to 0px unless the viewport meta opts in with `viewport-fit=cover`
+	   (see app.html), so they are safe to reference unconditionally. */
+	--ch-safe-top: env(safe-area-inset-top, 0px);
+	--ch-safe-right: env(safe-area-inset-right, 0px);
+	--ch-safe-bottom: env(safe-area-inset-bottom, 0px);
+	--ch-safe-left: env(safe-area-inset-left, 0px);
+
+	/* Height of the app header's own content, excluding the top safe area. */
+	--ch-header-content: 3.5rem;
+
+	/* Height of the mobile bottom navigation's own content (icon + label +
+	   padding + top border), which measures ~3.66rem. Rounded up slightly so
+	   font metrics can vary without content slipping under the bar. */
+	--ch-bottom-nav-content: 3.75rem;
+
+	/* Total space the bottom navigation occupies, including the safe area it
+	   reserves below itself. Page content must clear this much on mobile. */
+	--ch-bottom-nav: calc(var(--ch-bottom-nav-content) + var(--ch-safe-bottom));
 }
 
 html,
@@ -12,11 +32,73 @@ body {
 	height: 100%;
 }
 
+/* Reserve the horizontal safe-area insets for in-flow app chrome. Elements that
+   are position-fixed escape this container and inset themselves individually. */
+.ch-safe-x {
+	padding-left: var(--ch-safe-left);
+	padding-right: var(--ch-safe-right);
+}
+
+/* The header sits flush against the top of the viewport, so it grows by the top
+   safe area and pushes its content below the status bar / notch. */
+.ch-header {
+	height: calc(var(--ch-header-content) + var(--ch-safe-top));
+	padding-top: var(--ch-safe-top);
+}
+
+/* Fixed mobile chrome: inset each edge that touches the viewport. */
+.ch-bottom-nav {
+	padding-bottom: var(--ch-safe-bottom);
+	padding-left: var(--ch-safe-left);
+	padding-right: var(--ch-safe-right);
+}
+
+.ch-drawer {
+	padding-left: var(--ch-safe-left);
+}
+
+/* Overlay shell padding, so dialogs never butt up against the notch or the
+   home indicator on small screens. */
+.ch-overlay-inset {
+	padding: calc(1rem + var(--ch-safe-top)) calc(1rem + var(--ch-safe-right))
+		calc(1rem + var(--ch-safe-bottom)) calc(1rem + var(--ch-safe-left));
+}
+
 /* Tailwind v4 defaults buttons to the default cursor; restore the hand cursor
    for all interactive buttons across the app (matches the sidebar buttons). */
 button:not(:disabled),
 [role='button']:not([aria-disabled='true']) {
 	cursor: pointer;
+}
+
+/* ...and show every disabled control as unavailable. Only some call sites set
+   `disabled:cursor-not-allowed`, so without this the cursor varied by page.
+   A `disabled:cursor-*` utility still wins where a control wants otherwise. */
+button:disabled,
+input:disabled,
+select:disabled,
+textarea:disabled,
+[aria-disabled='true'] {
+	cursor: not-allowed;
+}
+
+/* Scroll without a visible scrollbar, for chrome that must stay a fixed height
+   (the breadcrumb trail) but can overflow on narrow viewports. */
+.ch-no-scrollbar {
+	scrollbar-width: none;
+	-ms-overflow-style: none;
+}
+.ch-no-scrollbar::-webkit-scrollbar {
+	display: none;
+}
+
+/* One focus indicator for every control. Form fields previously mixed the
+   browser default ring with an `outline-none` + border-tint treatment, so the
+   focused field looked different depending on the page. `:focus-visible` keeps
+   it off for pointer interaction. */
+:where(a, button, input, select, textarea, summary, [role='button'], [role='switch']):focus-visible {
+	outline: 2px solid var(--color-sky-500);
+	outline-offset: 2px;
 }
 
 /* Hide scrollbars on mobile devices while keeping scroll functionality. */

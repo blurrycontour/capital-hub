@@ -373,7 +373,7 @@
 					<input
 						bind:value={displayName}
 						placeholder="Your name"
-						class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 dark:border-slate-700 dark:bg-slate-900"
+						class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-sky-500 dark:border-slate-700 dark:bg-slate-900"
 					/>
 				</label>
 				<label class="space-y-1">
@@ -382,7 +382,7 @@
 						type="email"
 						bind:value={email}
 						placeholder="you@example.com"
-						class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 dark:border-slate-700 dark:bg-slate-900"
+						class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-sky-500 dark:border-slate-700 dark:bg-slate-900"
 					/>
 				</label>
 			</div>
@@ -391,7 +391,7 @@
 				<button
 					type="submit"
 					disabled={!dirty || saving}
-					class="rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-50"
+					class="rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
 				>
 					{saving ? 'Saving...' : 'Save changes'}
 				</button>
@@ -399,7 +399,7 @@
 					type="button"
 					onclick={reset}
 					disabled={!dirty || saving}
-					class="rounded-md border border-slate-300 px-4 py-2 text-sm hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-800"
+					class="rounded-md border border-slate-300 px-4 py-2 text-sm hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:hover:bg-slate-800"
 				>
 					Cancel
 				</button>
@@ -475,7 +475,7 @@
 				<div
 					class="rounded-md border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm text-indigo-800 dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-200"
 				>
-					OIDC Authetication
+					OIDC Authentication
 				</div>
 			{/if}
 
@@ -502,7 +502,7 @@
 						bind:value={currentPassword}
 						required
 						disabled={isOidcOnly}
-						class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-slate-900"
+						class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-sky-500 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-slate-900"
 					/>
 				</label>
 				<label class="space-y-1">
@@ -512,7 +512,7 @@
 						bind:value={newPassword}
 						required
 						disabled={isOidcOnly}
-						class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-slate-900"
+						class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-sky-500 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-slate-900"
 					/>
 				</label>
 				<label class="space-y-1">
@@ -522,7 +522,7 @@
 						bind:value={confirmPassword}
 						required
 						disabled={isOidcOnly}
-						class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-slate-900"
+						class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-sky-500 disabled:cursor-not-allowed dark:border-slate-700 dark:bg-slate-900"
 					/>
 				</label>
 			</div>
@@ -531,7 +531,7 @@
 				<button
 					type="submit"
 					disabled={changingPassword || isOidcOnly}
-					class="rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-50"
+					class="rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
 				>
 					{changingPassword ? 'Saving...' : 'Change password'}
 				</button>
@@ -550,7 +550,7 @@
 						type="button"
 						onclick={() => void doRevokeOtherSessions()}
 						disabled={revokingOthers}
-						class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800/60"
+						class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800/60"
 					>
 						<Icon name="logout" class="h-4 w-4" />
 						{revokingOthers ? 'Signing out…' : 'Sign out all other sessions'}
@@ -604,7 +604,7 @@
 									type="button"
 									onclick={() => void doRevokeSession(session.id)}
 									disabled={revokingId === session.id}
-									class="inline-flex items-center gap-1.5 rounded-md border border-rose-300 px-3 py-1.5 text-sm font-medium text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-900/60 dark:text-rose-400 dark:hover:bg-rose-950/40"
+									class="inline-flex items-center gap-1.5 rounded-md border border-rose-300 px-3 py-1.5 text-sm font-medium text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-rose-900/60 dark:text-rose-400 dark:hover:bg-rose-950/40"
 								>
 									<Icon name="close" class="h-4 w-4" />
 									{revokingId === session.id ? 'Revoking…' : 'Revoke'}
@@ -679,7 +679,7 @@
 					inputmode="numeric"
 					autocomplete="one-time-code"
 					placeholder="123456"
-					class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm tracking-widest outline-none focus:border-rose-500 dark:border-slate-700 dark:bg-slate-900"
+					class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm tracking-widest focus:border-rose-500 dark:border-slate-700 dark:bg-slate-900"
 				/>
 			</label>
 		{/if}
@@ -698,7 +698,7 @@
 				type="button"
 				onclick={sendDeletionCode}
 				disabled={sendingCode}
-				class="rounded-md bg-rose-600 px-4 py-2 text-sm font-medium text-white hover:bg-rose-500 disabled:cursor-not-allowed disabled:opacity-50"
+				class="rounded-md bg-rose-600 px-4 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
 			>
 				{sendingCode ? 'Sending…' : 'Send confirmation code'}
 			</button>
@@ -707,7 +707,7 @@
 				type="button"
 				onclick={confirmDelete}
 				disabled={deletingAccount}
-				class="rounded-md bg-rose-600 px-4 py-2 text-sm font-medium text-white hover:bg-rose-500 disabled:cursor-not-allowed disabled:opacity-50"
+				class="rounded-md bg-rose-600 px-4 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
 			>
 				{deletingAccount ? 'Deleting…' : 'Delete account'}
 			</button>

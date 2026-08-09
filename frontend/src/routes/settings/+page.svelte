@@ -138,7 +138,7 @@
 				aria-label="Include shared collections in statistics"
 				disabled={savingPrefs}
 				onclick={toggleIncludeShared}
-				class={`relative mt-1 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${
+				class={`relative mt-1 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-60 ${
 					includeSharedInStats ? 'bg-sky-600' : 'bg-slate-300 dark:bg-slate-700'
 				}`}
 			>
@@ -150,10 +150,13 @@
 			</button>
 		</div>
 
+		<!-- These rows pair a description with a wide <select>. The select cannot
+		     shrink below its longest option, so on narrow screens they stack
+		     instead of squeezing the description into a one-word column. -->
 		<div
-			class="flex items-start justify-between gap-4 border-t border-slate-100 pt-4 dark:border-slate-800"
+			class="flex flex-col gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:items-start sm:justify-between sm:gap-4 dark:border-slate-800"
 		>
-			<div class="space-y-0.5">
+			<div class="min-w-0 space-y-0.5">
 				<p class="text-sm font-medium">Money rounding</p>
 				<p class="text-sm text-slate-500">
 					Number of decimal places used when displaying amounts in stats, collections, items and
@@ -165,7 +168,7 @@
 				disabled={savingPrefs}
 				value={amountDecimals}
 				onchange={(e) => setDecimals(Number((e.currentTarget as HTMLSelectElement).value))}
-				class="mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800"
+				class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:opacity-60 sm:mt-1 sm:w-auto sm:shrink-0 dark:border-slate-700 dark:bg-slate-800"
 			>
 				<option value={0}>0 (whole numbers)</option>
 				<option value={1}>1 decimal place</option>
@@ -174,9 +177,9 @@
 		</div>
 
 		<div
-			class="flex items-start justify-between gap-4 border-t border-slate-100 pt-4 dark:border-slate-800"
+			class="flex flex-col gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:items-start sm:justify-between sm:gap-4 dark:border-slate-800"
 		>
-			<div class="space-y-0.5">
+			<div class="min-w-0 space-y-0.5">
 				<p class="text-sm font-medium">Number format</p>
 				<p class="text-sm text-slate-500">
 					Digit grouping and decimal separator used when displaying amounts.
@@ -188,7 +191,7 @@
 				value={numberFormat}
 				onchange={(e) =>
 					setMoneyFormat((e.currentTarget as HTMLSelectElement).value as NumberFormat)}
-				class="mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800"
+				class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:opacity-60 sm:mt-1 sm:w-auto sm:shrink-0 dark:border-slate-700 dark:bg-slate-800"
 			>
 				<option value="international">International (1,234,567.89)</option>
 				<option value="indian">Indian (12,34,567.89)</option>
@@ -222,7 +225,7 @@
 				aria-label="Notify when a collection is shared with me"
 				disabled={savingPrefs}
 				onclick={() => toggleNotify('notifyCollectionShared')}
-				class={`relative mt-1 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${
+				class={`relative mt-1 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-60 ${
 					notifyCollectionShared ? 'bg-sky-600' : 'bg-slate-300 dark:bg-slate-700'
 				}`}
 			>
@@ -250,7 +253,7 @@
 				aria-label="Notify when an item is added to a shared collection"
 				disabled={savingPrefs}
 				onclick={() => toggleNotify('notifyItemAdded')}
-				class={`relative mt-1 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${
+				class={`relative mt-1 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-60 ${
 					notifyItemAdded ? 'bg-sky-600' : 'bg-slate-300 dark:bg-slate-700'
 				}`}
 			>
@@ -278,7 +281,7 @@
 				aria-label="Notify when an entry is made in a shared collection"
 				disabled={savingPrefs}
 				onclick={() => toggleNotify('notifyEntryAdded')}
-				class={`relative mt-1 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${
+				class={`relative mt-1 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-60 ${
 					notifyEntryAdded ? 'bg-sky-600' : 'bg-slate-300 dark:bg-slate-700'
 				}`}
 			>

@@ -11,7 +11,7 @@
 	} from '$lib/api';
 	import { auth } from '$lib/auth.svelte';
 	import Icon, { type IconName } from '$lib/Icon.svelte';
-	import CountBadge from '$lib/CountBadge.svelte';
+	import CountBadge, { type BadgeTone } from '$lib/CountBadge.svelte';
 	import MapView from '$lib/MapView.svelte';
 
 	const user = $derived(auth.user);
@@ -42,10 +42,10 @@
 			{ label: 'Net Expense', icon: 'currency', value: netLabel, tone: 'neutral' }
 		]);
 
-	const counts: { label: string; icon: IconName; value: number }[] = $derived([
-		{ label: 'collections', icon: 'collections', value: summary.collections },
-		{ label: 'items', icon: 'cube', value: summary.items },
-		{ label: 'entries', icon: 'list', value: summary.entries }
+	const counts: { label: string; icon: IconName; value: number; tone: BadgeTone }[] = $derived([
+		{ label: 'collections', icon: 'collections', value: summary.collections, tone: 'collections' },
+		{ label: 'items', icon: 'cube', value: summary.items, tone: 'items' },
+		{ label: 'entries', icon: 'list', value: summary.entries, tone: 'entries' }
 	]);
 
 	// Compact "x ago" label for the recent-items list.
@@ -124,7 +124,7 @@
 	<!-- Portfolio counts -->
 	<div class="flex flex-wrap items-center gap-2">
 		{#each counts as c (c.label)}
-			<CountBadge icon={c.icon} value={c.value} label={c.label} />
+			<CountBadge icon={c.icon} value={c.value} label={c.label} tone={c.tone} />
 		{/each}
 	</div>
 

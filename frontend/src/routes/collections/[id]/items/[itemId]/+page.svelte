@@ -594,7 +594,7 @@
 				<!-- Stats -->
 				{#if stats}
 					<div class="flex flex-wrap items-center gap-2">
-						<CountBadge icon="list" value={stats.entryCount} label="entries" />
+						<CountBadge icon="list" value={stats.entryCount} label="entries" tone="entries" />
 					</div>
 				{/if}
 

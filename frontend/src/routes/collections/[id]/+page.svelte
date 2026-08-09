@@ -403,8 +403,8 @@
 
 			{#if stats}
 				<div class="mt-4 flex flex-wrap items-center gap-2">
-					<CountBadge icon="cube" value={stats.itemCount} label="items" />
-					<CountBadge icon="list" value={stats.entryCount} label="entries" />
+					<CountBadge icon="cube" value={stats.itemCount} label="items" tone="items" />
+					<CountBadge icon="list" value={stats.entryCount} label="entries" tone="entries" />
 				</div>
 			{/if}
 

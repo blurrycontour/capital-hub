@@ -3,60 +3,10 @@ package inventory_test
 import (
 	"context"
 	"errors"
-	"path/filepath"
 	"testing"
 
-	"github.com/aditya/capital-hub/internal/database"
 	"github.com/aditya/capital-hub/internal/inventory"
 )
-
-// newTestService builds an inventory service over a migrated, throwaway SQLite
-// database and returns it alongside the owner's and sharee's user IDs.
-func newTestService(t *testing.T) (*inventory.Service, int64, int64) {
-	t.Helper()
-	ctx := context.Background()
-
-	db, err := database.Open(ctx, filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	if err := database.Migrate(ctx, db); err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
-
-	newUser := func(username, email string) int64 {
-		res, err := db.ExecContext(ctx,
-			`INSERT INTO users (username, email, display_name) VALUES (?, ?, ?)`,
-			username, email, username,
-		)
-		if err != nil {
-			t.Fatalf("insert user %s: %v", username, err)
-		}
-		id, _ := res.LastInsertId()
-		return id
-	}
-
-	return inventory.NewService(db), newUser("owner", "owner@example.com"), newUser("sharee", "sharee@example.com")
-}
-
-func newCollection(t *testing.T, svc *inventory.Service, ownerID int64) int64 {
-	t.Helper()
-	c, err := svc.CreateCollection(context.Background(), ownerID, inventory.CollectionInput{
-		Name: "Vehicles", Description: "cars", Currency: "EUR",
-	})
-	if err != nil {
-		t.Fatalf("create collection: %v", err)
-	}
-	return c.ID
-}
-
-func share(t *testing.T, svc *inventory.Service, ownerID, collectionID int64, access string) {
-	t.Helper()
-	if _, err := svc.ShareCollection(context.Background(), ownerID, collectionID, "sharee", access); err != nil {
-		t.Fatalf("share at %q: %v", access, err)
-	}
-}
 
 // TestCollectionEditPermissions pins down which share levels may edit the
 // collection's own details. "full" was added for exactly this; "write" grants
@@ -74,9 +24,10 @@ func TestCollectionEditPermissions(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.access, func(t *testing.T) {
 			ctx := context.Background()
-			svc, ownerID, shareeID := newTestService(t)
-			id := newCollection(t, svc, ownerID)
-			share(t, svc, ownerID, id, tc.access)
+			e := newEnv(t)
+			svc, shareeID := e.svc, e.sharee
+			id := e.newCollection("Vehicles")
+			e.share(id, tc.access)
 
 			_, err := svc.UpdateCollection(ctx, shareeID, id, inventory.CollectionInput{
 				Name: "Renamed", Description: "by sharee", Currency: "EUR",
@@ -115,9 +66,10 @@ func TestCollectionEditPermissions(t *testing.T) {
 // the owner.
 func TestFullAccessStopsShortOfOwnership(t *testing.T) {
 	ctx := context.Background()
-	svc, ownerID, shareeID := newTestService(t)
-	id := newCollection(t, svc, ownerID)
-	share(t, svc, ownerID, id, inventory.AccessFull)
+	e := newEnv(t)
+	svc, ownerID, shareeID := e.svc, e.owner, e.sharee
+	id := e.newCollection("Vehicles")
+	e.share(id, inventory.AccessFull)
 
 	if err := svc.DeleteCollection(ctx, shareeID, id); err == nil {
 		t.Error("full access must not be able to delete the collection")
@@ -144,9 +96,10 @@ func TestAccessLevelReporting(t *testing.T) {
 	for _, access := range inventory.ShareAccessLevels {
 		t.Run(access, func(t *testing.T) {
 			ctx := context.Background()
-			svc, ownerID, shareeID := newTestService(t)
-			id := newCollection(t, svc, ownerID)
-			share(t, svc, ownerID, id, access)
+			e := newEnv(t)
+			svc, ownerID, shareeID := e.svc, e.owner, e.sharee
+			id := e.newCollection("Vehicles")
+			e.share(id, access)
 
 			asSharee, err := svc.GetCollection(ctx, shareeID, id)
 			if err != nil {
@@ -175,8 +128,9 @@ func TestAccessLevelReporting(t *testing.T) {
 // anyway — it must not be treated as more than read-only.
 func TestShareRejectsUnknownAccess(t *testing.T) {
 	ctx := context.Background()
-	svc, ownerID, _ := newTestService(t)
-	id := newCollection(t, svc, ownerID)
+	e := newEnv(t)
+	svc, ownerID := e.svc, e.owner
+	id := e.newCollection("Vehicles")
 
 	for _, bad := range []string{"admin", "owner", "", "FULL CONTROL"} {
 		if _, err := svc.ShareCollection(ctx, ownerID, id, "sharee", bad); err == nil {
@@ -193,9 +147,10 @@ func TestShareRejectsUnknownAccess(t *testing.T) {
 // what "write" could already do.
 func TestWriteAccessStillEditsContents(t *testing.T) {
 	ctx := context.Background()
-	svc, ownerID, shareeID := newTestService(t)
-	id := newCollection(t, svc, ownerID)
-	share(t, svc, ownerID, id, inventory.AccessWrite)
+	e := newEnv(t)
+	svc, shareeID := e.svc, e.sharee
+	id := e.newCollection("Vehicles")
+	e.share(id, inventory.AccessWrite)
 
 	if _, err := svc.CreateItem(ctx, shareeID, id, inventory.ItemInput{Name: "Estate car"}); err != nil {
 		t.Fatalf("write access should create items: %v", err)

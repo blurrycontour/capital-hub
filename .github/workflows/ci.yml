@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   backend:
-    name: Backend (vet + test)
+    name: Backend (build + vet + test)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,24 +24,26 @@ jobs:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
 
-      # The backend embeds the built frontend via `//go:embed all:dist`, which
-      # requires at least one file to exist. The real build isn't needed to vet
-      # or test the Go code, so create a placeholder to satisfy the directive.
-      - name: Prepare embed placeholder
-        run: |
-          mkdir -p backend/internal/web/dist
-          touch backend/internal/web/dist/.gitkeep
+      # `//go:embed all:dist` needs at least one file to exist. The real
+      # frontend build isn't needed to vet or test the Go code, and
+      # backend/internal/web/dist/.gitkeep is committed for exactly this, so
+      # a checkout is enough to satisfy the directive.
+      - name: go build
+        working-directory: backend
+        run: go build ./...
 
       - name: go vet
         working-directory: backend
         run: go vet ./...
 
+      # -race catches data races in the notification goroutines spawned by the
+      # HTTP handlers; it needs cgo, which the runner has by default.
       - name: go test
         working-directory: backend
-        run: go test ./...
+        run: go test -race ./...
 
   frontend:
-    name: Frontend (svelte-check)
+    name: Frontend (check + build)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -59,3 +61,9 @@ jobs:
       - name: Type check
         working-directory: frontend
         run: npm run check
+
+      # svelte-check does not compile the app, so a build-only failure (a bad
+      # Tailwind class, a Vite/plugin problem) would otherwise reach main.
+      - name: Build
+        working-directory: frontend
+        run: npm run build

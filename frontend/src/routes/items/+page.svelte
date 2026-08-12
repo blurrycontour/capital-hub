@@ -2,6 +2,8 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import Icon from '$lib/Icon.svelte';
+	import SortMenu from '$lib/SortMenu.svelte';
+	import { loadSort, saveSort, sortRecords, type SortOption } from '$lib/sort';
 	import { canEditContents } from '$lib/access';
 	import Modal from '$lib/Modal.svelte';
 	import LocationPicker from '$lib/LocationPicker.svelte';
@@ -89,6 +91,15 @@
 	const VIEW_KEY = 'ch-view-items';
 	let view = $state<'card' | 'list'>('card');
 
+	// Sort order (persisted per device, like the view preference).
+	const SORT_KEY = 'ch-sort-items';
+	let sort = $state<SortOption>('updated-desc');
+
+	function setSort(v: SortOption) {
+		sort = v;
+		saveSort(SORT_KEY, v);
+	}
+
 	function setView(v: 'card' | 'list') {
 		view = v;
 		try {
@@ -100,13 +111,15 @@
 
 	const filtered = $derived.by(() => {
 		const q = query.trim().toLowerCase();
-		if (!q) return items;
-		return items.filter(
-			(it) =>
-				it.name.toLowerCase().includes(q) ||
-				it.description.toLowerCase().includes(q) ||
-				it.collectionName.toLowerCase().includes(q)
-		);
+		const matches = !q
+			? items
+			: items.filter(
+					(it) =>
+						it.name.toLowerCase().includes(q) ||
+						it.description.toLowerCase().includes(q) ||
+						it.collectionName.toLowerCase().includes(q)
+				);
+		return sortRecords(matches, sort);
 	});
 
 	async function load() {
@@ -126,6 +139,7 @@
 		try {
 			const raw = localStorage.getItem(VIEW_KEY);
 			if (raw === 'list' || raw === 'card') view = raw;
+			sort = loadSort(SORT_KEY);
 		} catch {
 			/* ignore */
 		}
@@ -203,12 +217,15 @@
 			<p class="text-sm">No items yet. Add items to your collections to see them here.</p>
 		</div>
 	{:else}
-		<input
-			type="search"
-			bind:value={query}
-			placeholder="Filter items…"
-			class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
-		/>
+		<div class="flex items-center gap-2">
+			<input
+				type="search"
+				bind:value={query}
+				placeholder="Filter items…"
+				class="min-w-0 flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+			/>
+			<SortMenu value={sort} onchange={setSort} />
+		</div>
 
 		{#if filtered.length === 0}
 			<p

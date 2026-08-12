@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import Icon from '$lib/Icon.svelte';
+	import SortMenu from '$lib/SortMenu.svelte';
+	import { loadSort, saveSort, sortRecords, type SortOption } from '$lib/sort';
 	import { accessDescription } from '$lib/access';
 	import Modal from '$lib/Modal.svelte';
 	import LocationPicker from '$lib/LocationPicker.svelte';
@@ -22,6 +24,15 @@
 	const VIEW_KEY = 'ch-view-collections';
 	let view = $state<'card' | 'list'>('card');
 
+	// Sort order (persisted per device, like the view preference).
+	const SORT_KEY = 'ch-sort-collections';
+	let sort = $state<SortOption>('updated-desc');
+
+	function setSort(v: SortOption) {
+		sort = v;
+		saveSort(SORT_KEY, v);
+	}
+
 	function setView(v: 'card' | 'list') {
 		view = v;
 		try {
@@ -33,14 +44,16 @@
 
 	const filtered = $derived.by(() => {
 		const q = query.trim().toLowerCase();
-		if (!q) return collections;
-		return collections.filter(
-			(c) =>
-				c.name.toLowerCase().includes(q) ||
-				c.description.toLowerCase().includes(q) ||
-				c.currency.toLowerCase().includes(q) ||
-				c.ownerName.toLowerCase().includes(q)
-		);
+		const matches = !q
+			? collections
+			: collections.filter(
+					(c) =>
+						c.name.toLowerCase().includes(q) ||
+						c.description.toLowerCase().includes(q) ||
+						c.currency.toLowerCase().includes(q) ||
+						c.ownerName.toLowerCase().includes(q)
+				);
+		return sortRecords(matches, sort);
 	});
 
 	// Create modal state.
@@ -72,6 +85,7 @@
 		try {
 			const raw = localStorage.getItem(VIEW_KEY);
 			if (raw === 'list' || raw === 'card') view = raw;
+			sort = loadSort(SORT_KEY);
 		} catch {
 			/* ignore */
 		}
@@ -190,12 +204,15 @@
 			</button>
 		</div>
 	{:else}
-		<input
-			type="search"
-			bind:value={query}
-			placeholder="Filter collections…"
-			class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
-		/>
+		<div class="flex items-center gap-2">
+			<input
+				type="search"
+				bind:value={query}
+				placeholder="Filter collections…"
+				class="min-w-0 flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+			/>
+			<SortMenu value={sort} onchange={setSort} />
+		</div>
 
 		{#if filtered.length === 0}
 			<p

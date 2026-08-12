@@ -1,11 +1,20 @@
 <script lang="ts">
 	import { onMount, onDestroy, tick } from 'svelte';
+	import { SvelteSet } from 'svelte/reactivity';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import Icon from '$lib/Icon.svelte';
 	import { canEditContents } from '$lib/access';
 	import CountBadge from '$lib/CountBadge.svelte';
-	import AttachmentList from '$lib/AttachmentList.svelte';
+	import AttachmentList, { type AttachmentView } from '$lib/AttachmentList.svelte';
+	import FileTypeIcon from '$lib/FileTypeIcon.svelte';
+	import {
+		ATTACHMENT_ACCEPT,
+		attachmentError,
+		attachmentKind,
+		extensionOf,
+		imageError
+	} from '$lib/attachments';
 	import Modal from '$lib/Modal.svelte';
 	import LocationPicker from '$lib/LocationPicker.svelte';
 	import CustomFieldsEditor from '$lib/CustomFieldsEditor.svelte';
@@ -81,9 +90,13 @@
 	// Image upload
 	let uploading = $state(false);
 
-	// Item attachment upload
+	// Item attachment upload. `attachmentMsg` renders beside the attachments,
+	// unlike `error`, which sits at the very top of a long page where an upload
+	// failure would go unseen.
 	let attachInput = $state<HTMLInputElement | null>(null);
 	let uploadingAttachment = $state(false);
+	let attachmentMsg = $state('');
+	let imageMsg = $state('');
 
 	// Entry modal
 	let entryModal = $state(false);
@@ -95,19 +108,52 @@
 	let enDate = $state('');
 	let savingEntry = $state(false);
 	let entryAttachInput = $state<HTMLInputElement | null>(null);
-	let uploadingEntryAttachment = $state(false);
+	let entryAttachmentMsg = $state('');
+
+	// Attachment changes in the dialog are staged and only applied on save, so
+	// cancelling leaves the entry exactly as it was. Files chosen here are held
+	// locally with an object URL for preview; removals are recorded by path.
+	let pendingEntryFiles = $state<{ file: File; url: string }[]>([]);
+	let removedEntryPaths = $state<string[]>([]);
+
+	const entryAttachments = $derived<AttachmentView[]>([
+		...(editingEntry?.attachments ?? []).filter((a) => !removedEntryPaths.includes(a.path)),
+		...pendingEntryFiles.map((p) => ({ name: p.file.name, path: p.url, pending: true }))
+	]);
+
+	const hasStagedAttachmentChanges = $derived(
+		pendingEntryFiles.length > 0 || removedEntryPaths.length > 0
+	);
+
+	// Object URLs are only valid until revoked; drop them whenever the staged
+	// set is discarded or flushed.
+	function clearStagedAttachments() {
+		for (const p of pendingEntryFiles) URL.revokeObjectURL(p.url);
+		pendingEntryFiles = [];
+		removedEntryPaths = [];
+		entryAttachmentMsg = '';
+	}
 
 	let deleteEntryTarget = $state<Entry | null>(null);
 	let deletingEntry = $state(false);
 
-	// Expanded entry row (shows full note + edit/delete actions).
-	let expandedEntryId = $state<number | null>(null);
+	// Expanded entry rows (show full note + attachments + edit/delete actions).
+	// A set rather than a single id so several can be open at once, which is
+	// what the expand-all control needs.
+	let expandedEntryIds = $state<Set<number>>(new SvelteSet());
+	const allExpanded = $derived(entries.length > 0 && expandedEntryIds.size === entries.length);
 
 	// Entry briefly highlighted after arriving via a deep link (#entry-<id>).
 	let highlightedEntryId = $state<number | null>(null);
 
 	function toggleExpand(id: number) {
-		expandedEntryId = expandedEntryId === id ? null : id;
+		if (expandedEntryIds.has(id)) expandedEntryIds.delete(id);
+		else expandedEntryIds.add(id);
+	}
+
+	function toggleExpandAll() {
+		if (allExpanded) expandedEntryIds.clear();
+		else for (const e of entries) expandedEntryIds.add(e.id);
 	}
 
 	// When arriving via a deep link like #entry-42, expand and scroll to that
@@ -118,7 +164,7 @@
 		if (!match) return;
 		const id = Number(match[1]);
 		if (!entries.some((e) => e.id === id)) return;
-		expandedEntryId = id;
+		expandedEntryIds.add(id);
 		highlightedEntryId = id;
 		await tick();
 		const el = document.getElementById(`entry-${id}`);
@@ -215,7 +261,11 @@
 		}
 	});
 
-	onDestroy(() => breadcrumbs.clearTrail());
+	onDestroy(() => {
+		breadcrumbs.clearTrail();
+		// Release any object URLs still held by a dialog left open on navigation.
+		clearStagedAttachments();
+	});
 
 	function openEdit() {
 		if (!item) return;
@@ -321,12 +371,13 @@
 
 	async function onAddImage(file: File) {
 		if (!item) return;
+		imageMsg = imageError(file);
+		if (imageMsg) return;
 		uploading = true;
-		error = '';
 		try {
 			item = await uploadItemImage(item.id, file);
 		} catch (err) {
-			error = err instanceof Error ? err.message : 'Failed to upload image';
+			imageMsg = err instanceof Error ? err.message : 'Failed to upload image';
 		} finally {
 			uploading = false;
 		}
@@ -365,31 +416,33 @@
 	async function onAttachmentChange(e: Event) {
 		const input = e.target as HTMLInputElement;
 		const file = input.files?.[0];
+		input.value = '';
 		if (!file || !item) return;
+		attachmentMsg = attachmentError(file);
+		if (attachmentMsg) return;
 		uploadingAttachment = true;
-		error = '';
 		try {
 			item = await uploadItemAttachment(item.id, file);
 		} catch (err) {
-			error = err instanceof Error ? err.message : 'Failed to upload attachment';
+			attachmentMsg = err instanceof Error ? err.message : 'Failed to upload attachment';
 		} finally {
 			uploadingAttachment = false;
-			input.value = '';
 		}
 	}
 
-	// Path of the attachment awaiting delete confirmation (null = no prompt).
-	let deleteAttachmentTarget = $state<string | null>(null);
+	// The attachment awaiting delete confirmation (null = no prompt). Held whole
+	// so the dialog can name and preview what is about to go.
+	let deleteAttachmentTarget = $state<AttachmentView | null>(null);
 
 	async function confirmDeleteItemAttachment() {
-		if (!item || deleteAttachmentTarget == null) return;
+		if (!item || !deleteAttachmentTarget) return;
 		uploadingAttachment = true;
-		error = '';
+		attachmentMsg = '';
 		try {
-			item = await deleteItemAttachment(item.id, deleteAttachmentTarget);
+			item = await deleteItemAttachment(item.id, deleteAttachmentTarget.path);
 			deleteAttachmentTarget = null;
 		} catch (err) {
-			error = err instanceof Error ? err.message : 'Failed to delete attachment';
+			attachmentMsg = err instanceof Error ? err.message : 'Failed to delete attachment';
 		} finally {
 			uploadingAttachment = false;
 		}
@@ -400,6 +453,7 @@
 	}
 
 	function openCreateEntry() {
+		clearStagedAttachments();
 		editingEntry = null;
 		enName = '';
 		enAmount = 0;
@@ -410,6 +464,7 @@
 	}
 
 	function openEditEntry(entry: Entry) {
+		clearStagedAttachments();
 		editingEntry = entry;
 		enName = entry.name;
 		enAmount = entry.amount;
@@ -423,20 +478,34 @@
 		if (!item) return;
 		savingEntry = true;
 		error = '';
+		entryAttachmentMsg = '';
 		const payload: EntryInput = {
 			name: enName.trim(),
 			amount: Number(enAmount),
 			kind: enKind,
 			note: enNote.trim(),
 			occurredOn: enDate,
-			attachments: editingEntry?.attachments ?? []
+			// Keep whatever survives the staged removals; the uploads below add
+			// the new files once the entry definitely exists.
+			attachments: (editingEntry?.attachments ?? []).filter(
+				(a) => !removedEntryPaths.includes(a.path)
+			)
 		};
 		try {
-			if (editingEntry) {
-				editingEntry = await updateEntry(editingEntry.id, payload);
-			} else {
-				editingEntry = await createEntry(item.id, payload);
+			let saved = editingEntry
+				? await updateEntry(editingEntry.id, payload)
+				: await createEntry(item.id, payload);
+
+			// Attachment endpoints need an entry id, so they run after the save.
+			for (const path of removedEntryPaths) {
+				saved = await deleteEntryAttachment(saved.id, path);
 			}
+			for (const staged of pendingEntryFiles) {
+				saved = await uploadEntryAttachment(saved.id, staged.file);
+			}
+
+			editingEntry = saved;
+			clearStagedAttachments();
 			[entries, stats] = await Promise.all([listEntries(item.id), getItemStats(item.id)]);
 			entryModal = false;
 		} catch (e) {
@@ -446,47 +515,29 @@
 		}
 	}
 
-	async function onEntryAttachmentChange(e: Event) {
+	// Staging only: nothing is uploaded until the entry is saved.
+	function onEntryAttachmentChange(e: Event) {
 		const input = e.target as HTMLInputElement;
 		const file = input.files?.[0];
-		if (!file || !item) return;
-		uploadingEntryAttachment = true;
-		error = '';
-		try {
-			// During the "add entry" flow there is no entry yet to attach to, so
-			// persist the entry first (using the values entered so far), then upload
-			// the attachment against the freshly created entry.
-			if (!editingEntry) {
-				editingEntry = await createEntry(item.id, {
-					name: enName.trim(),
-					amount: Number(enAmount),
-					kind: enKind,
-					note: enNote.trim(),
-					occurredOn: enDate,
-					attachments: []
-				});
-			}
-			editingEntry = await uploadEntryAttachment(editingEntry.id, file);
-			[entries, stats] = await Promise.all([listEntries(item.id), getItemStats(item.id)]);
-		} catch (err) {
-			error = err instanceof Error ? err.message : 'Failed to upload attachment';
-		} finally {
-			uploadingEntryAttachment = false;
-			input.value = '';
-		}
+		input.value = '';
+		if (!file) return;
+		entryAttachmentMsg = attachmentError(file);
+		if (entryAttachmentMsg) return;
+		pendingEntryFiles = [...pendingEntryFiles, { file, url: URL.createObjectURL(file) }];
 	}
 
-	async function onDeleteEntryAttachment(path: string) {
-		if (!editingEntry || !item) return;
-		uploadingEntryAttachment = true;
-		error = '';
-		try {
-			editingEntry = await deleteEntryAttachment(editingEntry.id, path);
-			[entries, stats] = await Promise.all([listEntries(item.id), getItemStats(item.id)]);
-		} catch (err) {
-			error = err instanceof Error ? err.message : 'Failed to delete attachment';
-		} finally {
-			uploadingEntryAttachment = false;
+	// Staging only: an existing attachment is marked for removal, a not-yet
+	// uploaded one is simply dropped.
+	function onRemoveEntryAttachment(att: AttachmentView) {
+		entryAttachmentMsg = '';
+		if (att.pending) {
+			const staged = pendingEntryFiles.find((p) => p.url === att.path);
+			if (staged) URL.revokeObjectURL(staged.url);
+			pendingEntryFiles = pendingEntryFiles.filter((p) => p.url !== att.path);
+			return;
+		}
+		if (!removedEntryPaths.includes(att.path)) {
+			removedEntryPaths = [...removedEntryPaths, att.path];
 		}
 	}
 
@@ -648,6 +699,14 @@
 		<!-- Images -->
 		<div>
 			<h2 class="mb-2 text-lg font-semibold">Images</h2>
+			{#if imageMsg}
+				<p
+					class="mb-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
+					role="alert"
+				>
+					{imageMsg}
+				</p>
+			{/if}
 			<ImageGallery
 				images={item.images}
 				coverPath={item.imagePath}
@@ -673,6 +732,7 @@
 				<input
 					bind:this={attachInput}
 					type="file"
+					accept={ATTACHMENT_ACCEPT}
 					class="hidden"
 					onchange={onAttachmentChange}
 				/>
@@ -688,29 +748,55 @@
 					</button>
 				{/if}
 			</div>
+			{#if attachmentMsg}
+				<p
+					class="mb-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
+					role="alert"
+				>
+					{attachmentMsg}
+				</p>
+			{/if}
 			{#if item.attachments.length === 0}
 				<p class="text-sm text-slate-500">No attachments.</p>
 			{:else}
 				<AttachmentList
 					attachments={item.attachments}
-					ondelete={canWrite ? (path) => (deleteAttachmentTarget = path) : undefined}
+					ondelete={canWrite ? (att) => (deleteAttachmentTarget = att) : undefined}
 					deleting={uploadingAttachment}
 				/>
 			{/if}
 		</div>
 
 		<!-- Entries -->
-		<div class="flex items-center justify-between">
+		<div class="flex items-center justify-between gap-2">
 			<h2 class="text-lg font-semibold">Entries</h2>
-			{#if canWrite}
-				<button
-					type="button"
-					class="inline-flex items-center gap-1.5 rounded-md bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-700"
-					onclick={openCreateEntry}
-				>
-					<Icon name="plus" class="h-4 w-4" /> Add entry
-				</button>
-			{/if}
+			<div class="flex items-center gap-2">
+				{#if entries.length > 0}
+					<button
+						type="button"
+						class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+						onclick={toggleExpandAll}
+						title={allExpanded ? 'Collapse all entries' : 'Expand all entries'}
+						aria-label={allExpanded ? 'Collapse all entries' : 'Expand all entries'}
+					>
+						<Icon
+							name="chevron-down"
+							class={`h-4 w-4 shrink-0 transition-transform ${allExpanded ? 'rotate-180' : ''}`}
+						/>
+						<!-- Label would crowd the row on a phone; the chevron carries it. -->
+						<span class="hidden sm:inline">{allExpanded ? 'Collapse all' : 'Expand all'}</span>
+					</button>
+				{/if}
+				{#if canWrite}
+					<button
+						type="button"
+						class="inline-flex items-center gap-1.5 rounded-md bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-700"
+						onclick={openCreateEntry}
+					>
+						<Icon name="plus" class="h-4 w-4" /> Add entry
+					</button>
+				{/if}
+			</div>
 		</div>
 
 		{#if entries.length === 0}
@@ -781,7 +867,7 @@
 					</thead>
 					<tbody class="divide-y divide-slate-100 dark:divide-slate-800">
 						{#each sortedEntries as entry (entry.id)}
-							{@const isOpen = expandedEntryId === entry.id}
+							{@const isOpen = expandedEntryIds.has(entry.id)}
 							<tr
 								id="entry-{entry.id}"
 								class="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 {highlightedEntryId ===
@@ -936,7 +1022,11 @@
 </Modal>
 
 <!-- Entry modal -->
-<Modal title={editingEntry ? 'Edit entry' : 'Add entry'} bind:open={entryModal}>
+<Modal
+	title={editingEntry ? 'Edit entry' : 'Add entry'}
+	bind:open={entryModal}
+	onclose={clearStagedAttachments}
+>
 	<div class="space-y-3">
 		<div class="grid grid-cols-2 gap-3">
 			<label class="block text-sm">
@@ -1002,13 +1092,15 @@
 			></textarea>
 		</label>
 
-		<!-- Entry attachments (available once the entry exists) -->
+		<!-- Entry attachments. Changes are staged and applied when the entry is
+		     saved, so cancelling leaves the stored attachments untouched. -->
 		<div class="text-sm">
 			<div class="flex items-center justify-between">
 				<span class="text-slate-600 dark:text-slate-400">Attachments</span>
 				<input
 					bind:this={entryAttachInput}
 					type="file"
+					accept={ATTACHMENT_ACCEPT}
 					class="hidden"
 					onchange={onEntryAttachmentChange}
 				/>
@@ -1016,27 +1108,38 @@
 					type="button"
 					class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100 disabled:opacity-60 dark:border-slate-700 dark:hover:bg-slate-800"
 					onclick={() => entryAttachInput?.click()}
-					disabled={uploadingEntryAttachment}
+					disabled={savingEntry}
 				>
-					<Icon name="plus" class="h-3.5 w-3.5" />
-					{uploadingEntryAttachment ? 'Uploading…' : 'Add'}
+					<Icon name="plus" class="h-3.5 w-3.5" /> Add
 				</button>
 			</div>
-			{#if !editingEntry}
-				<p class="mt-1 text-xs text-slate-500">
-					Adding a file will save this entry automatically.
+
+			{#if entryAttachmentMsg}
+				<p
+					class="mt-1 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
+					role="alert"
+				>
+					{entryAttachmentMsg}
 				</p>
-			{:else if editingEntry.attachments.length === 0}
+			{/if}
+
+			{#if entryAttachments.length === 0}
 				<p class="mt-1 text-xs text-slate-500">No attachments.</p>
 			{:else}
 				<div class="mt-1">
 					<AttachmentList
-						attachments={editingEntry.attachments}
-						ondelete={onDeleteEntryAttachment}
-						deleting={uploadingEntryAttachment}
+						attachments={entryAttachments}
+						ondelete={onRemoveEntryAttachment}
+						deleting={savingEntry}
 						size="sm"
 					/>
 				</div>
+			{/if}
+
+			{#if hasStagedAttachmentChanges}
+				<p class="mt-1 text-xs text-slate-500">
+					Attachment changes are applied when you save.
+				</p>
 			{/if}
 		</div>
 	</div>
@@ -1044,9 +1147,12 @@
 		<button
 			type="button"
 			class="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
-			onclick={() => (entryModal = false)}
+			onclick={() => {
+				clearStagedAttachments();
+				entryModal = false;
+			}}
 		>
-			Close
+			Cancel
 		</button>
 		<button
 			type="button"
@@ -1216,9 +1322,40 @@
 	open={deleteAttachmentTarget !== null}
 	onclose={() => (deleteAttachmentTarget = null)}
 >
-	<p class="text-sm text-slate-600 dark:text-slate-400">
-		Delete this attachment? This cannot be undone.
-	</p>
+	{#if deleteAttachmentTarget}
+		{@const kind = attachmentKind(deleteAttachmentTarget.name || deleteAttachmentTarget.path)}
+		<div class="space-y-3">
+			<!-- Show what is about to go, so the right file is obvious. -->
+			<div
+				class="flex items-center gap-3 rounded-md border border-slate-200 p-3 dark:border-slate-800"
+			>
+				{#if kind === 'image'}
+					<img
+						src={deleteAttachmentTarget.path}
+						alt=""
+						class="h-14 w-14 shrink-0 rounded object-cover"
+					/>
+				{:else}
+					<span
+						class="flex h-14 w-14 shrink-0 items-center justify-center rounded bg-slate-100 dark:bg-slate-800"
+					>
+						<FileTypeIcon {kind} class="h-7 w-7" />
+					</span>
+				{/if}
+				<div class="min-w-0">
+					<p class="break-all text-sm font-medium">{deleteAttachmentTarget.name}</p>
+					<p class="text-xs uppercase text-slate-500">
+						{extensionOf(deleteAttachmentTarget.name || deleteAttachmentTarget.path).slice(1) ||
+							'file'}
+					</p>
+				</div>
+			</div>
+			<p class="text-sm text-slate-600 dark:text-slate-400">
+				This removes the file from <strong class="break-words">{item?.name}</strong> and cannot be
+				undone.
+			</p>
+		</div>
+	{/if}
 	{#snippet footer()}
 		<button
 			type="button"

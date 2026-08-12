@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Icon from '$lib/Icon.svelte';
+	import { IMAGE_ACCEPT } from '$lib/attachments';
 
 	let {
 		images = [],
@@ -136,7 +137,7 @@
 	{/if}
 
 	{#if onadd}
-		<input bind:this={fileInput} type="file" accept="image/*" class="hidden" onchange={onFileChange} />
+		<input bind:this={fileInput} type="file" accept={IMAGE_ACCEPT} class="hidden" onchange={onFileChange} />
 		<button
 			type="button"
 			class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm hover:bg-slate-100 disabled:opacity-60 dark:border-slate-700 dark:hover:bg-slate-800"

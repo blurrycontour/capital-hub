@@ -5,6 +5,7 @@
 	import Icon from '$lib/Icon.svelte';
 	import { canEditContents } from '$lib/access';
 	import CountBadge from '$lib/CountBadge.svelte';
+	import AttachmentList from '$lib/AttachmentList.svelte';
 	import Modal from '$lib/Modal.svelte';
 	import LocationPicker from '$lib/LocationPicker.svelte';
 	import CustomFieldsEditor from '$lib/CustomFieldsEditor.svelte';
@@ -690,35 +691,11 @@
 			{#if item.attachments.length === 0}
 				<p class="text-sm text-slate-500">No attachments.</p>
 			{:else}
-				<ul class="flex flex-wrap gap-2">
-					{#each item.attachments as att (att.path)}
-						<li
-							class="inline-flex items-center gap-1 rounded-md border border-slate-200 pr-1 text-sm dark:border-slate-800"
-						>
-							<a
-								href={att.path}
-								target="_self"
-								title="Open attachment in same tab"
-								rel="noopener noreferrer"
-								class="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 hover:bg-slate-100 dark:hover:bg-slate-800"
-							>
-								<Icon name="photo" class="h-4 w-4 text-slate-400" />
-								{att.name}
-							</a>
-							{#if canWrite}
-								<button
-									type="button"
-									class="rounded p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-60 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
-									aria-label="Delete attachment"
-									onclick={() => (deleteAttachmentTarget = att.path)}
-									disabled={uploadingAttachment}
-								>
-									<Icon name="close" class="h-4 w-4" />
-								</button>
-							{/if}
-						</li>
-					{/each}
-				</ul>
+				<AttachmentList
+					attachments={item.attachments}
+					ondelete={canWrite ? (path) => (deleteAttachmentTarget = path) : undefined}
+					deleting={uploadingAttachment}
+				/>
 			{/if}
 		</div>
 
@@ -865,22 +842,9 @@
 											{#if entry.attachments.length > 0}
 												<div>
 													<p class="text-xs font-medium uppercase text-slate-400">Attachments</p>
-													<ul class="mt-1 flex flex-wrap gap-2">
-														{#each entry.attachments as att (att.path)}
-															<li>
-																<a
-																	href={att.path}
-																	target="_self"
-																	title="Open attachment in same tab"
-																	rel="noopener noreferrer"
-																	class="inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-2 py-1 text-xs hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
-																>
-																	<Icon name="photo" class="h-3.5 w-3.5 text-slate-400" />
-																	{att.name}
-																</a>
-															</li>
-														{/each}
-													</ul>
+													<div class="mt-1">
+														<AttachmentList attachments={entry.attachments} size="sm" />
+													</div>
 												</div>
 											{/if}
 											{#if canWrite}
@@ -1065,30 +1029,14 @@
 			{:else if editingEntry.attachments.length === 0}
 				<p class="mt-1 text-xs text-slate-500">No attachments.</p>
 			{:else}
-				<ul class="mt-1 flex flex-wrap gap-2">
-					{#each editingEntry.attachments as att (att.path)}
-						<li
-							class="inline-flex items-center gap-1 rounded-md border border-slate-200 pr-0.5 text-xs dark:border-slate-800"
-						>
-							<p
-								title={att.path}
-								class="inline-flex items-center gap-1.5 rounded-md px-2 py-1 hover:bg-slate-100 dark:hover:bg-slate-800"
-							>
-								<Icon name="photo" class="h-3.5 w-3.5 text-slate-400" />
-								{att.name}
-							</p>
-							<button
-								type="button"
-								class="rounded p-0.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-60 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
-								aria-label="Delete attachment"
-								onclick={() => onDeleteEntryAttachment(att.path)}
-								disabled={uploadingEntryAttachment}
-							>
-								<Icon name="close" class="h-3.5 w-3.5" />
-							</button>
-						</li>
-					{/each}
-				</ul>
+				<div class="mt-1">
+					<AttachmentList
+						attachments={editingEntry.attachments}
+						ondelete={onDeleteEntryAttachment}
+						deleting={uploadingEntryAttachment}
+						size="sm"
+					/>
+				</div>
 			{/if}
 		</div>
 	</div>

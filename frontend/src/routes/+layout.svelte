@@ -77,6 +77,19 @@
 		return crumbs;
 	});
 
+	// Which nav entry is highlighted. Item pages live under
+	// /collections/<id>/items/<itemId> for breadcrumb purposes, but they belong
+	// to the Items section as far as navigation goes. Otherwise the longest
+	// matching prefix wins, so a nested route never lights up two entries.
+	const activeNavHref = $derived.by(() => {
+		const path = $page.url.pathname;
+		if (/^\/collections\/\d+\/items\/\d+/.test(path)) return '/items';
+		if (path === '/') return '/';
+		return navItems
+			.filter((n) => n.href !== '/' && path.startsWith(n.href))
+			.sort((a, b) => b.href.length - a.href.length)[0]?.href;
+	});
+
 	const isLoginRoute = $derived($page.url.pathname.startsWith('/login'));
 	const showChrome = $derived(auth.isAuthenticated && !isLoginRoute);
 
@@ -266,10 +279,7 @@
 				>
 					{#each navItems as item (item.href)}
 						{#if !item.adminOnly || auth.user?.isAdmin}
-							{@const active =
-								item.href === '/'
-									? $page.url.pathname === '/'
-									: $page.url.pathname.startsWith(item.href)}
+							{@const active = item.href === activeNavHref}
 							<a
 								href={item.href}
 								title={item.label}
@@ -492,10 +502,7 @@
 				aria-label="Primary"
 			>
 				{#each bottomNavItems as item (item.href)}
-					{@const active =
-						item.href === '/'
-							? $page.url.pathname === '/'
-							: $page.url.pathname.startsWith(item.href)}
+					{@const active = item.href === activeNavHref}
 					<a
 						href={item.href}
 						title={item.label}

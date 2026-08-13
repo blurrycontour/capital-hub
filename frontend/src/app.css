@@ -82,6 +82,35 @@ textarea:disabled,
 	cursor: not-allowed;
 }
 
+/* The quick-add button floats clear of the bottom navigation, which already
+   reserves the device's safe area. */
+.ch-quick-add {
+	bottom: calc(1rem + var(--ch-bottom-nav));
+}
+
+/* Each unfolded action fades up in sequence, so the group reads as one
+   movement out of the button rather than three items appearing at once. */
+.ch-quick-add-action {
+	animation: ch-quick-add-in 140ms ease-out backwards;
+}
+
+@keyframes ch-quick-add-in {
+	from {
+		opacity: 0;
+		transform: translateY(0.5rem) scale(0.95);
+	}
+	to {
+		opacity: 1;
+		transform: none;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ch-quick-add-action {
+		animation: none;
+	}
+}
+
 /* Scroll without a visible scrollbar, for chrome that must stay a fixed height
    (the breadcrumb trail) but can overflow on narrow viewports. */
 .ch-no-scrollbar {

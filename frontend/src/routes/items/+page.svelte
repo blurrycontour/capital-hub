@@ -4,17 +4,12 @@
 	import Icon from '$lib/Icon.svelte';
 	import SortMenu from '$lib/SortMenu.svelte';
 	import { loadSort, saveSort, sortRecords, type SortOption } from '$lib/sort';
-	import { canEditContents } from '$lib/access';
-	import Modal from '$lib/Modal.svelte';
-	import LocationPicker from '$lib/LocationPicker.svelte';
-	import CustomFieldsEditor from '$lib/CustomFieldsEditor.svelte';
+	import CreateItemModal from '$lib/CreateItemModal.svelte';
 	import {
 		listAllItems,
 		listCollections,
-		createItem,
 		type ItemWithCollection,
-		type Collection,
-		type CustomField
+		type Collection
 	} from '$lib/api';
 
 	let items = $state<ItemWithCollection[]>([]);
@@ -26,64 +21,17 @@
 	let itemModal = $state(false);
 	let collections = $state<Collection[]>([]);
 	let loadingCollections = $state(false);
-	let iCollectionId = $state<number | null>(null);
-	let iName = $state('');
-	let iDescription = $state('');
-	let iLat = $state<number | null>(null);
-	let iLng = $state<number | null>(null);
-	let iLabel = $state('');
-	let iFields = $state<CustomField[]>([]);
-	let iUseLocation = $state(false);
-	let savingItem = $state(false);
-	let modalError = $state('');
-
-	// Only collections the user can add items to.
-	const writableCollections = $derived(
-		collections.filter((c) => canEditContents(c.accessLevel))
-	);
 
 	async function openCreateItem() {
-		iCollectionId = null;
-		iName = '';
-		iDescription = '';
-		iLat = null;
-		iLng = null;
-		iLabel = '';
-		iFields = [];
-		iUseLocation = false;
-		modalError = '';
 		itemModal = true;
+		if (collections.length > 0) return;
 		loadingCollections = true;
 		try {
 			collections = await listCollections();
 		} catch (e) {
-			modalError = e instanceof Error ? e.message : 'Failed to load collections';
+			error = e instanceof Error ? e.message : 'Failed to load collections';
 		} finally {
 			loadingCollections = false;
-		}
-	}
-
-	async function saveItem() {
-		if (iCollectionId == null || !iName.trim()) return;
-		savingItem = true;
-		modalError = '';
-		try {
-			const created = await createItem(iCollectionId, {
-				name: iName.trim(),
-				description: iDescription.trim(),
-				locationLat: iUseLocation ? iLat : null,
-				locationLng: iUseLocation ? iLng : null,
-				locationLabel: iUseLocation ? iLabel.trim() : '',
-				images: [],
-				attachments: [],
-				customFields: iFields.filter((f) => f.label.trim() || f.value.trim())
-			});
-			itemModal = false;
-			await goto(`/collections/${created.collectionId}/items/${created.id}`);
-		} catch (e) {
-			modalError = e instanceof Error ? e.message : 'Failed to create item';
-		} finally {
-			savingItem = false;
 		}
 	}
 
@@ -312,87 +260,9 @@
 </section>
 
 <!-- Add item modal -->
-<Modal title="Add item" bind:open={itemModal}>
-	<div class="space-y-3">
-		{#if modalError}
-			<div
-				class="rounded-md border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300"
-			>
-				{modalError}
-			</div>
-		{/if}
-		<label class="block text-sm">
-			<span class="text-slate-600 dark:text-slate-400">Collection</span>
-			{#if loadingCollections}
-				<p class="mt-1 text-sm text-slate-500">Loading collections…</p>
-			{:else if writableCollections.length === 0}
-				<p class="mt-1 text-sm text-slate-500">
-					You don’t have any collections you can add items to.
-					<a href="/collections" class="text-sky-600 hover:underline dark:text-sky-400"
-						>Create one first.</a
-					>
-				</p>
-			{:else}
-				<select
-					bind:value={iCollectionId}
-					class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
-				>
-					<option value={null} disabled selected>Select a collection…</option>
-					{#each writableCollections as c (c.id)}
-						<option value={c.id}>{c.name} ({c.currency})</option>
-					{/each}
-				</select>
-			{/if}
-		</label>
-		<label class="block text-sm">
-			<span class="text-slate-600 dark:text-slate-400">Name</span>
-			<input
-				type="text"
-				bind:value={iName}
-				class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
-				placeholder="e.g. 1921 Silver Dollar"
-			/>
-		</label>
-		<label class="block text-sm">
-			<span class="text-slate-600 dark:text-slate-400">Description</span>
-			<textarea
-				bind:value={iDescription}
-				rows="3"
-				class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
-			></textarea>
-		</label>
-		<div class="text-sm">
-			<span class="text-slate-600 dark:text-slate-400">Custom fields</span>
-			<div class="mt-1">
-				<CustomFieldsEditor bind:fields={iFields} />
-			</div>
-		</div>
-		<label class="flex items-center gap-2 text-sm">
-			<input type="checkbox" bind:checked={iUseLocation} class="rounded" />
-			<span class="text-slate-600 dark:text-slate-400">Add a location</span>
-		</label>
-		{#if iUseLocation}
-			<LocationPicker bind:lat={iLat} bind:lng={iLng} bind:label={iLabel} />
-		{/if}
-		<p class="text-xs text-slate-500">
-			You can add a photo, attachments and transaction entries after creating the item.
-		</p>
-	</div>
-	{#snippet footer()}
-		<button
-			type="button"
-			class="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
-			onclick={() => (itemModal = false)}
-		>
-			Cancel
-		</button>
-		<button
-			type="button"
-			class="rounded-md bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-60"
-			onclick={saveItem}
-			disabled={savingItem || iCollectionId == null || !iName.trim()}
-		>
-			{savingItem ? 'Creating…' : 'Create'}
-		</button>
-	{/snippet}
-</Modal>
+<CreateItemModal
+	bind:open={itemModal}
+	{collections}
+	{loadingCollections}
+	oncreated={(created) => goto(`/collections/${created.collectionId}/items/${created.id}`)}
+/>

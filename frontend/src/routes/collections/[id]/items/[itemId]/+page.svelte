@@ -16,7 +16,6 @@
 		imageError
 	} from '$lib/attachments';
 	import Modal from '$lib/Modal.svelte';
-	import EntryFormModal from '$lib/EntryFormModal.svelte';
 	import LocationPicker from '$lib/LocationPicker.svelte';
 	import CustomFieldsEditor from '$lib/CustomFieldsEditor.svelte';
 	import MapView from '$lib/MapView.svelte';
@@ -35,15 +34,20 @@
 		setItemCover,
 		uploadItemAttachment,
 		deleteItemAttachment,
+		uploadEntryAttachment,
+		deleteEntryAttachment,
 		getItemStats,
 		getCollection,
 		listEntries,
+		createEntry,
+		updateEntry,
 		deleteEntry,
 		formatCurrency,
 		type Item,
 		type Entry,
 		type Stats,
 		type Collection,
+		type EntryInput,
 		type CustomField
 	} from '$lib/api';
 
@@ -94,10 +98,41 @@
 	let attachmentMsg = $state('');
 	let imageMsg = $state('');
 
-	// Entry modal. The form itself lives in EntryFormModal; the page only
-	// tracks which entry is open and refreshes once it saves.
+	// Entry modal
 	let entryModal = $state(false);
 	let editingEntry = $state<Entry | null>(null);
+	let enName = $state('');
+	let enAmount = $state(0);
+	let enKind = $state<'debit' | 'credit'>('debit');
+	let enNote = $state('');
+	let enDate = $state('');
+	let savingEntry = $state(false);
+	let entryAttachInput = $state<HTMLInputElement | null>(null);
+	let entryAttachmentMsg = $state('');
+
+	// Attachment changes in the dialog are staged and only applied on save, so
+	// cancelling leaves the entry exactly as it was. Files chosen here are held
+	// locally with an object URL for preview; removals are recorded by path.
+	let pendingEntryFiles = $state<{ file: File; url: string }[]>([]);
+	let removedEntryPaths = $state<string[]>([]);
+
+	const entryAttachments = $derived<AttachmentView[]>([
+		...(editingEntry?.attachments ?? []).filter((a) => !removedEntryPaths.includes(a.path)),
+		...pendingEntryFiles.map((p) => ({ name: p.file.name, path: p.url, pending: true }))
+	]);
+
+	const hasStagedAttachmentChanges = $derived(
+		pendingEntryFiles.length > 0 || removedEntryPaths.length > 0
+	);
+
+	// Object URLs are only valid until revoked; drop them whenever the staged
+	// set is discarded or flushed.
+	function clearStagedAttachments() {
+		for (const p of pendingEntryFiles) URL.revokeObjectURL(p.url);
+		pendingEntryFiles = [];
+		removedEntryPaths = [];
+		entryAttachmentMsg = '';
+	}
 
 	let deleteEntryTarget = $state<Entry | null>(null);
 	let deletingEntry = $state(false);
@@ -226,7 +261,11 @@
 		}
 	});
 
-	onDestroy(() => breadcrumbs.clearTrail());
+	onDestroy(() => {
+		breadcrumbs.clearTrail();
+		// Release any object URLs still held by a dialog left open on navigation.
+		clearStagedAttachments();
+	});
 
 	function openEdit() {
 		if (!item) return;
@@ -414,19 +453,92 @@
 	}
 
 	function openCreateEntry() {
+		clearStagedAttachments();
 		editingEntry = null;
+		enName = '';
+		enAmount = 0;
+		enKind = 'debit';
+		enNote = '';
+		enDate = todayISO();
 		entryModal = true;
 	}
 
 	function openEditEntry(entry: Entry) {
+		clearStagedAttachments();
 		editingEntry = entry;
+		enName = entry.name;
+		enAmount = entry.amount;
+		enKind = entry.kind;
+		enNote = entry.note;
+		enDate = entry.occurredOn ? entry.occurredOn.slice(0, 10) : todayISO();
 		entryModal = true;
 	}
 
-	// Reload after the entry form saves, so totals and the list stay in step.
-	async function refreshEntries() {
+	async function saveEntry() {
 		if (!item) return;
-		[entries, stats] = await Promise.all([listEntries(item.id), getItemStats(item.id)]);
+		savingEntry = true;
+		error = '';
+		entryAttachmentMsg = '';
+		const payload: EntryInput = {
+			name: enName.trim(),
+			amount: Number(enAmount),
+			kind: enKind,
+			note: enNote.trim(),
+			occurredOn: enDate,
+			// Keep whatever survives the staged removals; the uploads below add
+			// the new files once the entry definitely exists.
+			attachments: (editingEntry?.attachments ?? []).filter(
+				(a) => !removedEntryPaths.includes(a.path)
+			)
+		};
+		try {
+			let saved = editingEntry
+				? await updateEntry(editingEntry.id, payload)
+				: await createEntry(item.id, payload);
+
+			// Attachment endpoints need an entry id, so they run after the save.
+			for (const path of removedEntryPaths) {
+				saved = await deleteEntryAttachment(saved.id, path);
+			}
+			for (const staged of pendingEntryFiles) {
+				saved = await uploadEntryAttachment(saved.id, staged.file);
+			}
+
+			editingEntry = saved;
+			clearStagedAttachments();
+			[entries, stats] = await Promise.all([listEntries(item.id), getItemStats(item.id)]);
+			entryModal = false;
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to save entry';
+		} finally {
+			savingEntry = false;
+		}
+	}
+
+	// Staging only: nothing is uploaded until the entry is saved.
+	function onEntryAttachmentChange(e: Event) {
+		const input = e.target as HTMLInputElement;
+		const file = input.files?.[0];
+		input.value = '';
+		if (!file) return;
+		entryAttachmentMsg = attachmentError(file);
+		if (entryAttachmentMsg) return;
+		pendingEntryFiles = [...pendingEntryFiles, { file, url: URL.createObjectURL(file) }];
+	}
+
+	// Staging only: an existing attachment is marked for removal, a not-yet
+	// uploaded one is simply dropped.
+	function onRemoveEntryAttachment(att: AttachmentView) {
+		entryAttachmentMsg = '';
+		if (att.pending) {
+			const staged = pendingEntryFiles.find((p) => p.url === att.path);
+			if (staged) URL.revokeObjectURL(staged.url);
+			pendingEntryFiles = pendingEntryFiles.filter((p) => p.url !== att.path);
+			return;
+		}
+		if (!removedEntryPaths.includes(att.path)) {
+			removedEntryPaths = [...removedEntryPaths, att.path];
+		}
 	}
 
 	async function confirmDeleteEntry() {
@@ -910,13 +1022,148 @@
 </Modal>
 
 <!-- Entry modal -->
-<EntryFormModal
+<Modal
+	title={editingEntry ? 'Edit entry' : 'Add entry'}
 	bind:open={entryModal}
-	entry={editingEntry}
-	itemId={item?.id ?? null}
-	{currency}
-	onsaved={refreshEntries}
-/>
+	onclose={clearStagedAttachments}
+>
+	<div class="space-y-3">
+		<div class="grid grid-cols-2 gap-3">
+			<label class="block text-sm">
+				<span class="text-slate-600 dark:text-slate-400">Name</span>
+				<input
+					type="text"
+					bind:value={enName}
+					placeholder="e.g. Purchase"
+					class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+				/>
+			</label>
+			<label class="block text-sm">
+				<span class="text-slate-600 dark:text-slate-400">Date</span>
+				<input
+					type="date"
+					bind:value={enDate}
+					class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+				/>
+			</label>
+		</div>
+		<fieldset class="block text-sm">
+			<span class="text-slate-600 dark:text-slate-400">Type</span>
+			<div class="mt-1 flex gap-2">
+				<label
+					class={`flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
+						enKind === 'debit'
+							? 'border-rose-500 bg-rose-50 text-rose-700 dark:border-rose-500 dark:bg-rose-500/10 dark:text-rose-300'
+							: 'border-slate-300 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'
+					}`}
+				>
+					<input type="radio" name="entry-kind" value="debit" bind:group={enKind} class="sr-only" />
+					<Icon name="minus" class="h-4 w-4" />
+					Debit
+				</label>
+				<label
+					class={`flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
+						enKind === 'credit'
+							? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:border-emerald-500 dark:bg-emerald-500/10 dark:text-emerald-300'
+							: 'border-slate-300 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'
+					}`}
+				>
+					<input type="radio" name="entry-kind" value="credit" bind:group={enKind} class="sr-only" />
+					<Icon name="plus" class="h-4 w-4" />
+					Credit
+				</label>
+			</div>
+		</fieldset>
+		<label class="block text-sm">
+			<span class="text-slate-600 dark:text-slate-400">Amount ({currency})</span>
+			<input
+				type="number"
+				step="any"
+				bind:value={enAmount}
+				class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+			/>
+		</label>
+		<label class="block text-sm">
+			<span class="text-slate-600 dark:text-slate-400">Note</span>
+			<textarea
+				bind:value={enNote}
+				rows="2"
+				class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+			></textarea>
+		</label>
+
+		<!-- Entry attachments. Changes are staged and applied when the entry is
+		     saved, so cancelling leaves the stored attachments untouched. -->
+		<div class="text-sm">
+			<div class="flex items-center justify-between">
+				<span class="text-slate-600 dark:text-slate-400">Attachments</span>
+				<input
+					bind:this={entryAttachInput}
+					type="file"
+					accept={ATTACHMENT_ACCEPT}
+					class="hidden"
+					onchange={onEntryAttachmentChange}
+				/>
+				<button
+					type="button"
+					class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100 disabled:opacity-60 dark:border-slate-700 dark:hover:bg-slate-800"
+					onclick={() => entryAttachInput?.click()}
+					disabled={savingEntry}
+				>
+					<Icon name="plus" class="h-3.5 w-3.5" /> Add
+				</button>
+			</div>
+
+			{#if entryAttachmentMsg}
+				<p
+					class="mt-1 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
+					role="alert"
+				>
+					{entryAttachmentMsg}
+				</p>
+			{/if}
+
+			{#if entryAttachments.length === 0}
+				<p class="mt-1 text-xs text-slate-500">No attachments.</p>
+			{:else}
+				<div class="mt-1">
+					<AttachmentList
+						attachments={entryAttachments}
+						ondelete={onRemoveEntryAttachment}
+						deleting={savingEntry}
+						size="sm"
+					/>
+				</div>
+			{/if}
+
+			{#if hasStagedAttachmentChanges}
+				<p class="mt-1 text-xs text-slate-500">
+					Attachment changes are applied when you save.
+				</p>
+			{/if}
+		</div>
+	</div>
+	{#snippet footer()}
+		<button
+			type="button"
+			class="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+			onclick={() => {
+				clearStagedAttachments();
+				entryModal = false;
+			}}
+		>
+			Cancel
+		</button>
+		<button
+			type="button"
+			class="rounded-md bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-60"
+			onclick={saveEntry}
+			disabled={savingEntry}
+		>
+			{savingEntry ? 'Saving…' : 'Save'}
+		</button>
+	{/snippet}
+</Modal>
 
 <!-- Metadata modal -->
 <Modal title="Item metadata" bind:open={metadataModal}>

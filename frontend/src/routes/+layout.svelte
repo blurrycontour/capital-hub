@@ -9,6 +9,8 @@
 	import { breadcrumbs as crumbStore } from '$lib/breadcrumb.svelte';
 	import { notifCount } from '$lib/notifCount.svelte';
 	import Icon, { type IconName } from '$lib/Icon.svelte';
+	import QuickAddTrigger from '$lib/QuickAddTrigger.svelte';
+	import QuickAddModals from '$lib/QuickAddModals.svelte';
 	import { useRegisterSW } from 'virtual:pwa-register/svelte';
 	import { getPreferences, setAmountDecimals, setNumberFormat } from '$lib/api';
 
@@ -89,6 +91,13 @@
 			.filter((n) => n.href !== '/' && path.startsWith(n.href))
 			.sort((a, b) => b.href.length - a.href.length)[0]?.href;
 	});
+
+	// Quick add is for the three data types, so it stays out of the way on the
+	// pages that only configure the account or the server.
+	const QUICK_ADD_HIDDEN = ['/account', '/settings', '/admin'];
+	const showQuickAdd = $derived(
+		!QUICK_ADD_HIDDEN.some((prefix) => $page.url.pathname.startsWith(prefix))
+	);
 
 	const isLoginRoute = $derived($page.url.pathname.startsWith('/login'));
 	const showChrome = $derived(auth.isAuthenticated && !isLoginRoute);
@@ -307,6 +316,12 @@
 						{/if}
 					{/each}
 				</nav>
+
+				{#if showQuickAdd}
+					<div class="shrink-0 border-t border-slate-200 pt-2 dark:border-slate-800">
+						<QuickAddTrigger variant="sidebar" collapsed={!expanded} />
+					</div>
+				{/if}
 			</aside>
 
 			<div class="flex min-w-0 flex-1 flex-col">
@@ -495,6 +510,13 @@
 					{@render children()}
 				</main>
 			</div>
+
+			{#if showQuickAdd}
+				<QuickAddTrigger />
+				<!-- Rendered here, outside the transformed sidebar, so the dialogs
+				     are positioned against the viewport. -->
+				<QuickAddModals />
+			{/if}
 
 			<!-- Permanent bottom navigation (mobile only) -->
 			<nav

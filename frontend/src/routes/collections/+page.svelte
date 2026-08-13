@@ -4,15 +4,10 @@
 	import SortMenu from '$lib/SortMenu.svelte';
 	import { loadSort, saveSort, sortRecords, type SortOption } from '$lib/sort';
 	import { accessDescription } from '$lib/access';
-	import Modal from '$lib/Modal.svelte';
-	import LocationPicker from '$lib/LocationPicker.svelte';
-	import CustomFieldsEditor from '$lib/CustomFieldsEditor.svelte';
+	import CreateCollectionModal from '$lib/CreateCollectionModal.svelte';
 	import {
 		listCollections,
-		createCollection,
-		CURRENCIES,
-		type Collection,
-		type CustomField
+		type Collection
 	} from '$lib/api';
 
 	let collections = $state<Collection[]>([]);
@@ -56,17 +51,8 @@
 		return sortRecords(matches, sort);
 	});
 
-	// Create modal state.
+	// Create modal state (the form itself lives in CreateCollectionModal).
 	let createModal = $state(false);
-	let cName = $state('');
-	let cDescription = $state('');
-	let cCurrency = $state('EUR');
-	let cLat = $state<number | null>(null);
-	let cLng = $state<number | null>(null);
-	let cLabel = $state('');
-	let cFields = $state<CustomField[]>([]);
-	let cUseLocation = $state(false);
-	let saving = $state(false);
 
 	async function load() {
 		loading = true;
@@ -92,39 +78,8 @@
 	});
 
 	function openCreate() {
-		cName = '';
-		cDescription = '';
-		cCurrency = 'EUR';
-		cLat = null;
-		cLng = null;
-		cLabel = '';
-		cFields = [];
-		cUseLocation = false;
 		error = '';
 		createModal = true;
-	}
-
-	async function save() {
-		if (!cName.trim()) return;
-		saving = true;
-		error = '';
-		try {
-			await createCollection({
-				name: cName.trim(),
-				description: cDescription.trim(),
-				currency: cCurrency,
-				locationLat: cUseLocation ? cLat : null,
-				locationLng: cUseLocation ? cLng : null,
-				locationLabel: cUseLocation ? cLabel.trim() : '',
-				customFields: cFields.filter((f) => f.label.trim() || f.value.trim())
-			});
-			createModal = false;
-			await load();
-		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to create collection';
-		} finally {
-			saving = false;
-		}
 	}
 </script>
 
@@ -350,59 +305,4 @@
 </section>
 
 <!-- New collection modal -->
-<Modal title="New collection" bind:open={createModal}>
-	<div class="space-y-3">
-		<label class="block text-sm">
-			<span class="text-slate-600 dark:text-slate-400">Name</span>
-			<input
-				type="text"
-				bind:value={cName}
-				class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
-				placeholder="e.g. Coin collection"
-			/>
-		</label>
-		<label class="block text-sm">
-			<span class="text-slate-600 dark:text-slate-400">Description</span>
-			<textarea
-				bind:value={cDescription}
-				rows="3"
-				class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
-			></textarea>
-		</label>
-		<label class="block text-sm">
-			<span class="text-slate-600 dark:text-slate-400">Currency</span>
-			<select
-				bind:value={cCurrency}
-				class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
-			>
-				{#each CURRENCIES as code (code)}
-					<option value={code}>{code}</option>
-				{/each}
-			</select>
-		</label>
-
-		<div class="text-sm">
-			<span class="text-slate-600 dark:text-slate-400">Custom fields</span>
-			<div class="mt-1">
-				<CustomFieldsEditor bind:fields={cFields} />
-			</div>
-		</div>
-	</div>
-	{#snippet footer()}
-		<button
-			type="button"
-			class="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
-			onclick={() => (createModal = false)}
-		>
-			Cancel
-		</button>
-		<button
-			type="button"
-			class="rounded-md bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-60"
-			onclick={save}
-			disabled={saving || !cName.trim()}
-		>
-			{saving ? 'Saving…' : 'Create'}
-		</button>
-	{/snippet}
-</Modal>
+<CreateCollectionModal bind:open={createModal} oncreated={() => load()} />

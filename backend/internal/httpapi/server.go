@@ -238,6 +238,7 @@ func (s *Server) routes() error {
 
 		api.Route("/entries", func(e chi.Router) {
 			e.Use(s.requireAuth)
+			e.Get("/suggestions", s.handleEntrySuggestions)
 			e.With(s.requireCSRF, s.requireNotReader).Patch("/{id}", s.handleUpdateEntry)
 			e.With(s.requireCSRF, s.requireNotReader).Delete("/{id}", s.handleDeleteEntry)
 			e.With(s.requireCSRF, s.requireNotReader).Post("/{id}/attachments", s.handleUploadEntryAttachment)

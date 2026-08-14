@@ -12,7 +12,9 @@
 	import AttachmentList, { type AttachmentView } from '$lib/AttachmentList.svelte';
 	import ItemPicker from '$lib/ItemPicker.svelte';
 	import { ATTACHMENT_ACCEPT, attachmentError } from '$lib/attachments';
+	import SuggestInput from '$lib/SuggestInput.svelte';
 	import {
+		getEntrySuggestions,
 		createEntry,
 		updateEntry,
 		uploadEntryAttachment,
@@ -57,6 +59,30 @@
 	let amount = $state(0);
 	let kind = $state<'debit' | 'credit'>('debit');
 	let note = $state('');
+	let from = $state('');
+	let to = $state('');
+
+	// Past values for the free-text fields, fetched once per dialog opening so
+	// the list reflects entries added since the page loaded.
+	let suggestions = $state<{ name: string[]; from: string[]; to: string[] }>({
+		name: [],
+		from: [],
+		to: []
+	});
+
+	async function loadSuggestions() {
+		try {
+			const [nameValues, fromValues, toValues] = await Promise.all([
+				getEntrySuggestions('name'),
+				getEntrySuggestions('from'),
+				getEntrySuggestions('to')
+			]);
+			suggestions = { name: nameValues, from: fromValues, to: toValues };
+		} catch {
+			// Suggestions are a convenience; the form works without them.
+			suggestions = { name: [], from: [], to: [] };
+		}
+	}
 	let date = $state('');
 	let saving = $state(false);
 	let error = $state('');
@@ -98,7 +124,10 @@
 			amount = entry?.amount ?? 0;
 			kind = entry?.kind === 'credit' ? 'credit' : 'debit';
 			note = entry?.note ?? '';
+			from = entry?.from ?? '';
+			to = entry?.to ?? '';
 			date = entry?.occurredOn ? entry.occurredOn.slice(0, 10) : todayISO();
+			void loadSuggestions();
 		}
 		wasOpen = open;
 	});
@@ -142,6 +171,8 @@
 			amount: Number(amount),
 			kind,
 			note: note.trim(),
+			from: from.trim(),
+			to: to.trim(),
 			occurredOn: date,
 			attachments: (entry?.attachments ?? []).filter((a) => !removedPaths.includes(a.path))
 		};
@@ -186,15 +217,16 @@
 		{/if}
 
 		<div class="grid grid-cols-2 gap-3">
-			<label class="block text-sm">
-				<span class="text-slate-600 dark:text-slate-400">Name</span>
-				<input
-					type="text"
+			<div class="block text-sm">
+				<label for="entry-name" class="text-slate-600 dark:text-slate-400">Name</label>
+				<SuggestInput
+					id="entry-name"
 					bind:value={name}
+					suggestions={suggestions.name}
 					placeholder="e.g. Purchase"
-					class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+					disabled={saving}
 				/>
-			</label>
+			</div>
 			<label class="block text-sm">
 				<span class="text-slate-600 dark:text-slate-400">Date</span>
 				<input
@@ -232,6 +264,34 @@
 				</label>
 			</div>
 		</fieldset>
+
+		<!-- Optional counterparty fields. Both offer previously used values. -->
+		<div class="grid grid-cols-2 gap-3">
+			<div class="block text-sm">
+				<label for="entry-from" class="text-slate-600 dark:text-slate-400">
+					From <span class="text-slate-400">(optional)</span>
+				</label>
+				<SuggestInput
+					id="entry-from"
+					bind:value={from}
+					suggestions={suggestions.from}
+					placeholder="e.g. Bank"
+					disabled={saving}
+				/>
+			</div>
+			<div class="block text-sm">
+				<label for="entry-to" class="text-slate-600 dark:text-slate-400">
+					To <span class="text-slate-400">(optional)</span>
+				</label>
+				<SuggestInput
+					id="entry-to"
+					bind:value={to}
+					suggestions={suggestions.to}
+					placeholder="e.g. Dealer"
+					disabled={saving}
+				/>
+			</div>
+		</div>
 
 		<label class="block text-sm">
 			<span class="text-slate-600 dark:text-slate-400">Amount ({currency})</span>

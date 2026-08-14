@@ -1,22 +1,27 @@
-<script lang="ts">
-	// Sort picker for the collections and items lists. Sits beside the filter
-	// box rather than in the page header, which keeps the header from wrapping
-	// on a phone.
+<script lang="ts" generics="T extends string">
+	// Sort picker for the list pages. Sits beside the filter box rather than in
+	// the page header, which keeps the header from wrapping on a phone. The
+	// options are supplied by the caller, because search sorts on a different
+	// set from the collection and item lists.
 	import Icon from '$lib/Icon.svelte';
-	import { SORT_OPTIONS, sortLabel, type SortOption } from '$lib/sort';
+	import { SORT_OPTIONS } from '$lib/sort';
 
 	let {
-		value = $bindable('updated-desc' as SortOption),
+		value = $bindable(),
+		options = SORT_OPTIONS as unknown as { value: T; label: string }[],
 		onchange
 	}: {
-		value?: SortOption;
-		onchange?: (v: SortOption) => void;
+		value: T;
+		options?: { value: T; label: string }[];
+		onchange?: (v: T) => void;
 	} = $props();
+
+	const currentLabel = $derived(options.find((o) => o.value === value)?.label ?? '');
 
 	let open = $state(false);
 	let el = $state<HTMLDivElement | null>(null);
 
-	function choose(v: SortOption) {
+	function choose(v: T) {
 		value = v;
 		onchange?.(v);
 		open = false;
@@ -46,13 +51,13 @@
 		onclick={() => (open = !open)}
 		aria-haspopup="menu"
 		aria-expanded={open}
-		title={`Sort: ${sortLabel(value)}`}
-		aria-label={`Sort: ${sortLabel(value)}`}
+		title={`Sort: ${currentLabel}`}
+		aria-label={`Sort: ${currentLabel}`}
 		class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-2.5 py-2 text-sm hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
 	>
 		<Icon name="sort" class="h-4 w-4 shrink-0 text-slate-500" />
 		<!-- The label would crowd the filter box on a phone; the icon carries it there. -->
-		<span class="hidden max-w-40 truncate sm:inline">{sortLabel(value)}</span>
+		<span class="hidden max-w-40 truncate sm:inline">{currentLabel}</span>
 	</button>
 
 	{#if open}
@@ -60,7 +65,7 @@
 			role="menu"
 			class="absolute right-0 z-30 mt-1 min-w-56 overflow-hidden rounded-md border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-900"
 		>
-			{#each SORT_OPTIONS as opt (opt.value)}
+			{#each options as opt (opt.value)}
 				{@const selected = opt.value === value}
 				<button
 					type="button"

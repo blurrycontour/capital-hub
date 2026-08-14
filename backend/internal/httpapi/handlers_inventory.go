@@ -740,6 +740,8 @@ type entryPayload struct {
 	Amount      float64                `json:"amount"`
 	Kind        string                 `json:"kind"`
 	Note        string                 `json:"note"`
+	From        string                 `json:"from"`
+	To          string                 `json:"to"`
 	OccurredOn  string                 `json:"occurredOn"`
 	Attachments []inventory.Attachment `json:"attachments"`
 }
@@ -750,9 +752,28 @@ func (p entryPayload) toInput() inventory.EntryInput {
 		Amount:      p.Amount,
 		Kind:        p.Kind,
 		Note:        p.Note,
+		From:        p.From,
+		To:          p.To,
 		OccurredOn:  p.OccurredOn,
 		Attachments: p.Attachments,
 	}
+}
+
+// handleEntrySuggestions returns past values of one entry field, so the entry
+// form can offer them instead of making the user retype.
+func (s *Server) handleEntrySuggestions(w http.ResponseWriter, r *http.Request) {
+	user := userFromContext(r)
+	field := r.URL.Query().Get("field")
+	values, err := s.inventory.EntrySuggestions(r.Context(), user.ID, field)
+	if err != nil {
+		if _, known := inventory.EntrySuggestionFields[field]; !known {
+			writeAPIError(w, http.StatusBadRequest, "unknown suggestion field")
+			return
+		}
+		s.writeInventoryError(w, r, err, "entry suggestions")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"suggestions": values})
 }
 
 func (s *Server) handleListEntries(w http.ResponseWriter, r *http.Request) {

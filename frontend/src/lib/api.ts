@@ -403,6 +403,9 @@ export type Entry = {
 	kind: 'debit' | 'credit';
 	currency: string;
 	note: string;
+	/** Optional counterparty fields: who it came from, who it went to. */
+	from: string;
+	to: string;
 	occurredOn: string;
 	attachments: Attachment[];
 	createdAt: string;
@@ -459,6 +462,8 @@ export type EntryInput = {
 	amount: number;
 	kind: 'debit' | 'credit';
 	note: string;
+	from: string;
+	to: string;
 	occurredOn: string;
 	attachments: Attachment[];
 };
@@ -647,6 +652,19 @@ export async function listEntries(itemId: number): Promise<Entry[]> {
 	const res = await fetch(`/api/v1/items/${itemId}/entries`);
 	const body = await parseJSON<{ entries: Entry[] }>(res);
 	return body.entries;
+}
+
+/** Fields of an entry that offer past values as suggestions. */
+export type EntrySuggestionField = 'name' | 'from' | 'to';
+
+/**
+ * Past values of one entry field, most-used first, across every collection the
+ * user can see. Used to prefill the entry form's free-text fields.
+ */
+export async function getEntrySuggestions(field: EntrySuggestionField): Promise<string[]> {
+	const res = await fetch(`/api/v1/entries/suggestions?field=${field}`);
+	const body = await parseJSON<{ suggestions: string[] }>(res);
+	return body.suggestions ?? [];
 }
 
 export async function createEntry(itemId: number, payload: EntryInput): Promise<Entry> {

@@ -813,6 +813,26 @@
 													{entry.note || '—'}
 												</p>
 											</div>
+											{#if entry.from || entry.to}
+												<div class="grid grid-cols-2 gap-3">
+													{#if entry.from}
+														<div class="min-w-0">
+															<p class="text-xs font-medium uppercase text-slate-400">From</p>
+															<p class="mt-0.5 break-words text-sm text-slate-600 dark:text-slate-300">
+																{entry.from}
+															</p>
+														</div>
+													{/if}
+													{#if entry.to}
+														<div class="min-w-0">
+															<p class="text-xs font-medium uppercase text-slate-400">To</p>
+															<p class="mt-0.5 break-words text-sm text-slate-600 dark:text-slate-300">
+																{entry.to}
+															</p>
+														</div>
+													{/if}
+												</div>
+											{/if}
 											{#if entry.attachments.length > 0}
 												<div>
 													<p class="text-xs font-medium uppercase text-slate-400">Attachments</p>

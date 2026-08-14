@@ -26,10 +26,6 @@ export const SORT_OPTIONS: { value: SortOption; label: string }[] = [
 	{ value: 'name-desc', label: 'Name (Z–A)' }
 ];
 
-export function sortLabel(option: SortOption): string {
-	return SORT_OPTIONS.find((o) => o.value === option)?.label ?? '';
-}
-
 function isSortOption(v: string): v is SortOption {
 	return SORT_OPTIONS.some((o) => o.value === v);
 }
@@ -45,7 +41,8 @@ export function loadSort(key: string): SortOption {
 	return DEFAULT_SORT;
 }
 
-export function saveSort(key: string, option: SortOption): void {
+/** Persist any of the sort vocabularies; the value is only ever a string. */
+export function saveSort(key: string, option: SortOption | SearchSortOption): void {
 	try {
 		localStorage.setItem(key, option);
 	} catch {
@@ -87,5 +84,49 @@ export function sortRecords<T extends Sortable>(records: T[], option: SortOption
 				return time(b.updatedAt) - time(a.updatedAt);
 		}
 	});
+	return out;
+}
+
+
+// ---------- Search ----------
+
+/**
+ * Search results carry no timestamps, so they get their own, smaller set.
+ * "Relevance" is the order the backend returns (FTS ranking), which is what
+ * the page showed before this control existed.
+ */
+export type SearchSortOption = 'relevance' | 'name-asc' | 'name-desc';
+
+export const DEFAULT_SEARCH_SORT: SearchSortOption = 'relevance';
+
+export const SEARCH_SORT_OPTIONS: { value: SearchSortOption; label: string }[] = [
+	{ value: 'relevance', label: 'Best match' },
+	{ value: 'name-asc', label: 'Name (A–Z)' },
+	{ value: 'name-desc', label: 'Name (Z–A)' }
+];
+
+export function loadSearchSort(key: string): SearchSortOption {
+	try {
+		const raw = localStorage.getItem(key);
+		if (raw && SEARCH_SORT_OPTIONS.some((o) => o.value === raw)) {
+			return raw as SearchSortOption;
+		}
+	} catch {
+		// Private mode or blocked storage: fall back to the default.
+	}
+	return DEFAULT_SEARCH_SORT;
+}
+
+/** Return a sorted copy, leaving the backend's ranking alone for 'relevance'. */
+export function sortSearchResults<T extends { name: string }>(
+	results: T[],
+	option: SearchSortOption
+): T[] {
+	if (option === 'relevance') return results;
+	const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true });
+	const out = [...results];
+	out.sort((a, b) =>
+		option === 'name-asc' ? collator.compare(a.name, b.name) : collator.compare(b.name, a.name)
+	);
 	return out;
 }

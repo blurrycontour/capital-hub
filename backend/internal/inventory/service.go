@@ -174,13 +174,16 @@ type Item struct {
 // Entry is a single transaction recorded against an item. Its currency is
 // inherited from the owning collection.
 type Entry struct {
-	ID          int64        `json:"id"`
-	ItemID      int64        `json:"itemId"`
-	Name        string       `json:"name"`
-	Amount      float64      `json:"amount"`
-	Kind        string       `json:"kind"`
-	Currency    string       `json:"currency"`
-	Note        string       `json:"note"`
+	ID       int64   `json:"id"`
+	ItemID   int64   `json:"itemId"`
+	Name     string  `json:"name"`
+	Amount   float64 `json:"amount"`
+	Kind     string  `json:"kind"`
+	Currency string  `json:"currency"`
+	Note     string  `json:"note"`
+	// Optional counterparty fields: who the money came from and who it went to.
+	From        string       `json:"from"`
+	To          string       `json:"to"`
 	OccurredOn  string       `json:"occurredOn"`
 	Attachments []Attachment `json:"attachments"`
 	CreatedAt   string       `json:"createdAt"`
@@ -1024,7 +1027,8 @@ func (s *Service) DeleteItem(ctx context.Context, userID, id int64) error {
 // ---------- Entries ----------
 
 const entrySelect = `
-SELECT e.id, e.item_id, e.name, e.amount, e.kind, e.currency, e.note, e.occurred_on, e.attachments,
+SELECT e.id, e.item_id, e.name, e.amount, e.kind, e.currency, e.note,
+       e.entry_from, e.entry_to, e.occurred_on, e.attachments,
        e.created_at, e.updated_at,
        COALESCE(cu.display_name, cu.username, ''),
        COALESCE(uu.display_name, uu.username, '')
@@ -1038,7 +1042,8 @@ LEFT JOIN users uu ON uu.id = e.updated_by
 func scanEntry(s interface{ Scan(...any) error }) (Entry, error) {
 	var e Entry
 	var attachments string
-	if err := s.Scan(&e.ID, &e.ItemID, &e.Name, &e.Amount, &e.Kind, &e.Currency, &e.Note, &e.OccurredOn, &attachments,
+	if err := s.Scan(&e.ID, &e.ItemID, &e.Name, &e.Amount, &e.Kind, &e.Currency, &e.Note,
+		&e.From, &e.To, &e.OccurredOn, &attachments,
 		&e.CreatedAt, &e.UpdatedAt, &e.CreatedBy, &e.UpdatedBy); err != nil {
 		return Entry{}, err
 	}
@@ -1099,6 +1104,8 @@ type EntryInput struct {
 	Amount      float64
 	Kind        string
 	Note        string
+	From        string
+	To          string
 	OccurredOn  string
 	Attachments []Attachment
 }
@@ -1114,6 +1121,8 @@ func normalizeEntry(in *EntryInput) error {
 		in.OccurredOn = time.Now().UTC().Format("2006-01-02")
 	}
 	in.Note = strings.TrimSpace(in.Note)
+	in.From = strings.TrimSpace(in.From)
+	in.To = strings.TrimSpace(in.To)
 	in.Attachments = normalizeAttachments(in.Attachments)
 	return nil
 }
@@ -1157,9 +1166,11 @@ func (s *Service) CreateEntry(ctx context.Context, userID, itemID int64, in Entr
 		return nil, err
 	}
 	res, err := s.db.ExecContext(ctx,
-		`INSERT INTO entries (item_id, name, amount, kind, currency, note, occurred_on, attachments, created_by, updated_by)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		itemID, in.Name, in.Amount, in.Kind, currency, in.Note, in.OccurredOn, marshalJSONField(in.Attachments), userID, userID,
+		`INSERT INTO entries (item_id, name, amount, kind, currency, note, entry_from, entry_to,
+		                      occurred_on, attachments, created_by, updated_by)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		itemID, in.Name, in.Amount, in.Kind, currency, in.Note, in.From, in.To,
+		in.OccurredOn, marshalJSONField(in.Attachments), userID, userID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create entry: %w", err)
@@ -1186,14 +1197,69 @@ func (s *Service) UpdateEntry(ctx context.Context, userID, id int64, in EntryInp
 		return nil, err
 	}
 	_, err = s.db.ExecContext(ctx,
-		`UPDATE entries SET name = ?, amount = ?, kind = ?, currency = ?, note = ?, occurred_on = ?, attachments = ?,
+		`UPDATE entries SET name = ?, amount = ?, kind = ?, currency = ?, note = ?,
+		 entry_from = ?, entry_to = ?, occurred_on = ?, attachments = ?,
 		 updated_at = datetime('now'), updated_by = ? WHERE id = ?`,
-		in.Name, in.Amount, in.Kind, currency, in.Note, in.OccurredOn, marshalJSONField(in.Attachments), userID, id,
+		in.Name, in.Amount, in.Kind, currency, in.Note, in.From, in.To,
+		in.OccurredOn, marshalJSONField(in.Attachments), userID, id,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("update entry: %w", err)
 	}
 	return s.GetEntry(ctx, userID, id)
+}
+
+// EntrySuggestionFields are the entry fields that offer past values as
+// suggestions. Restricted to a fixed set so the column name can be
+// interpolated into the query safely.
+var EntrySuggestionFields = map[string]string{
+	"name": "name",
+	"from": "entry_from",
+	"to":   "entry_to",
+}
+
+// entrySuggestionLimit caps how many past values are offered. The list is
+// filtered client-side as the user types, so it has to be small enough to send
+// on every dialog open but long enough to be worth having.
+const entrySuggestionLimit = 200
+
+// EntrySuggestions returns the distinct past values of one entry field across
+// every collection the user can see, most-used first so the common answers
+// surface without typing. Returns an error for an unknown field.
+func (s *Service) EntrySuggestions(ctx context.Context, userID int64, field string) ([]string, error) {
+	column, ok := EntrySuggestionFields[field]
+	if !ok {
+		return nil, fmt.Errorf("unknown suggestion field %q", field)
+	}
+	// `column` comes from the map above, never from the caller's string.
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT e.`+column+` AS value, COUNT(*) AS uses
+		 FROM entries e
+		 JOIN items i ON i.id = e.item_id
+		 JOIN collections c ON c.id = i.collection_id
+		 LEFT JOIN collection_shares cs ON cs.collection_id = c.id AND cs.user_id = ?
+		 WHERE (c.user_id = ? OR cs.access IS NOT NULL)
+		   AND TRIM(e.`+column+`) <> ''
+		 GROUP BY value COLLATE NOCASE
+		 ORDER BY uses DESC, value COLLATE NOCASE ASC
+		 LIMIT ?`,
+		userID, userID, entrySuggestionLimit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("entry suggestions: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]string, 0)
+	for rows.Next() {
+		var value string
+		var uses int
+		if err := rows.Scan(&value, &uses); err != nil {
+			return nil, fmt.Errorf("scan suggestion: %w", err)
+		}
+		out = append(out, value)
+	}
+	return out, rows.Err()
 }
 
 // AddEntryAttachment appends an uploaded file to an owned entry.

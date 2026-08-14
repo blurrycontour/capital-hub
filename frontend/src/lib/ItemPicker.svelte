@@ -129,7 +129,7 @@
 				<li class="px-3 py-2 text-sm text-slate-500">No matching items.</li>
 			{:else}
 				{#each matches as it, i (it.id)}
-					<li>
+					<li role="presentation">
 						<button
 							type="button"
 							role="option"

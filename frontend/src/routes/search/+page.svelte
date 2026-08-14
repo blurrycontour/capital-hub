@@ -1,5 +1,14 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import Icon, { type IconName } from '$lib/Icon.svelte';
+	import SortMenu from '$lib/SortMenu.svelte';
+	import {
+		SEARCH_SORT_OPTIONS,
+		loadSearchSort,
+		saveSort,
+		sortSearchResults,
+		type SearchSortOption
+	} from '$lib/sort';
 	import { search, type SearchResult } from '$lib/api';
 
 	let query = $state('');
@@ -8,6 +17,19 @@
 	let searched = $state(false);
 	let error = $state('');
 	let timer: ReturnType<typeof setTimeout> | undefined;
+
+	// Sort order (persisted per device, like the other list pages).
+	const SORT_KEY = 'ch-sort-search';
+	let sort = $state<SearchSortOption>('relevance');
+
+	function setSort(v: SearchSortOption) {
+		sort = v;
+		saveSort(SORT_KEY, v);
+	}
+
+	onMount(() => {
+		sort = loadSearchSort(SORT_KEY);
+	});
 
 	async function runSearch(q: string) {
 		const trimmed = q.trim();
@@ -101,9 +123,12 @@
 		}
 	];
 
+	// Results are grouped by type, so sorting the flat list orders each group.
+	const sorted = $derived(sortSearchResults(results, sort));
+
 	const groups = $derived(
 		groupDefs
-			.map((g) => ({ ...g, items: results.filter((r) => r.type === g.key) }))
+			.map((g) => ({ ...g, items: sorted.filter((r) => r.type === g.key) }))
 			.filter((g) => g.items.length > 0)
 	);
 </script>
@@ -112,16 +137,19 @@
 
 <section class="mx-auto max-w-4xl space-y-4">
 	<h1 class="text-2xl font-bold">Search</h1>
-	<div class="relative">
-		<span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
-			<Icon name="search" class="h-5 w-5" />
-		</span>
-		<input
-			bind:value={query}
-			oninput={onInput}
-			placeholder="Search collections, items and entries..."
-			class="w-full rounded-md border border-slate-300 bg-white py-2 pl-10 pr-3 text-sm focus:border-sky-500 dark:border-slate-700 dark:bg-slate-900"
-		/>
+	<div class="flex items-center gap-2">
+		<div class="relative min-w-0 flex-1">
+			<span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+				<Icon name="search" class="h-5 w-5" />
+			</span>
+			<input
+				bind:value={query}
+				oninput={onInput}
+				placeholder="Search collections, items and entries..."
+				class="w-full rounded-md border border-slate-300 bg-white py-2 pl-10 pr-3 text-sm focus:border-sky-500 dark:border-slate-700 dark:bg-slate-900"
+			/>
+		</div>
+		<SortMenu value={sort} options={SEARCH_SORT_OPTIONS} onchange={setSort} />
 	</div>
 
 	{#if error}

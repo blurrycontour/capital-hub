@@ -30,7 +30,7 @@
 
 {#if open}
 	<div
-		class="ch-overlay-inset fixed inset-0 z-50 flex items-center justify-center"
+		class="ch-overlay-inset fixed inset-x-0 top-0 z-50 flex h-[100svh] items-center justify-center"
 		role="presentation"
 	>
 		<button
@@ -46,7 +46,7 @@
 			aria-label={title}
 		>
 			<div
-				class="flex items-center justify-between border-b border-slate-200 px-5 py-3 dark:border-slate-800"
+				class="flex shrink-0 items-center justify-between border-b border-slate-200 px-5 py-3 dark:border-slate-800"
 			>
 				<h2 class="text-lg font-semibold">{title}</h2>
 				<button
@@ -63,7 +63,7 @@
 			</div>
 			{#if footer}
 				<div
-					class="flex items-center justify-end gap-2 border-t border-slate-200 px-5 py-3 dark:border-slate-800"
+					class="flex shrink-0 items-center justify-end gap-2 border-t border-slate-200 px-5 py-3 dark:border-slate-800"
 				>
 					{@render footer()}
 				</div>
